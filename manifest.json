@@ -1,0 +1,90 @@
+{
+  "version": "1.0.0",
+  "mcVersion": "1.20.1",
+  "files": [
+    {
+      "path": "mods/balm-forge-1.20.1-7.3.38-all.jar"
+    },
+    {
+      "path": "mods/carryon-forge-1.20.1-2.1.2.7.jar"
+    },
+    {
+      "path": "mods/cfm-forge-1.20.1-7.0.0-pre36.jar"
+    },
+    {
+      "path": "mods/copycats-3.0.7+mc.1.20.1-forge.jar"
+    },
+    {
+      "path": "mods/coroutil-forge-1.20.1-1.3.7.jar"
+    },
+    {
+      "path": "mods/corpse-forge-1.20.1-1.0.23.jar"
+    },
+    {
+      "path": "mods/create-1.20.1-6.0.8.jar"
+    },
+    {
+      "path": "mods/create-stuff-additions1.20.1_v2.1.0.jar"
+    },
+    {
+      "path": "mods/createaddition-1.20.1-1.3.3.jar"
+    },
+    {
+      "path": "mods/createdeco-2.0.3-1.20.1-forge.jar"
+    },
+    {
+      "path": "mods/create_enchantment_industry-1.3.3-for-create-6.0.6.jar"
+    },
+    {
+      "path": "mods/curios-forge-5.14.1+1.20.1.jar"
+    },
+    {
+      "path": "mods/decoration-delight-1.20.1.jar"
+    },
+    {
+      "path": "mods/FarmersDelight-1.20.1-1.2.10.jar"
+    },
+    {
+      "path": "mods/Iceberg-1.20.1-forge-1.1.25.jar"
+    },
+    {
+      "path": "mods/lithostitched-forge-1.20.1-1.4.11.jar"
+    },
+    {
+      "path": "mods/moredelight-25.07.28-1.20-forge.jar"
+    },
+    {
+      "path": "mods/MRU-1.0.4+1.20.1+forge.jar"
+    },
+    {
+      "path": "mods/Paintable-forge-1.20.1-1.8a-1.20.1.jar"
+    },
+    {
+      "path": "mods/SlavicDelight-0.3.0-forge-1.20.1.jar"
+    },
+    {
+      "path": "mods/sophisticatedbackpacks-1.20.1-3.24.24.1538.jar"
+    },
+    {
+      "path": "mods/sophisticatedcore-1.20.1-1.3.5.1505.jar"
+    },
+    {
+      "path": "mods/tectonic-3.0.17-forge-1.20.1.jar"
+    },
+    {
+      "path": "mods/Terralith_1.20.x_v2.5.4.jar"
+    },
+    {
+      "path": "mods/voicechat-forge-1.20.1-2.6.12.jar"
+    },
+    {
+      "path": "mods/waystones-forge-1.20.1-14.1.20.jar"
+    },
+    {
+      "path": "mods/YungsApi-1.20-Forge-4.0.6.jar"
+    },
+    {
+      "path": "mods/[1.20.1] SecurityCraft v1.10.1.jar"
+    }
+  ]
+}
