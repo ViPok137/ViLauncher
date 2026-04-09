@@ -175,6 +175,31 @@
     .sl{font-size:13px;color:var(--text);font-weight:600}
     .sv{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted)}
 
+    /* ── INSTALL BOX ── */
+    .install-box{background:var(--panel);border:1px solid rgba(255,215,0,.3);border-radius:10px;
+      padding:22px;margin-bottom:12px;position:relative;overflow:hidden}
+    .install-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,var(--g),transparent)}
+    .install-title{font-family:'Orbitron',monospace;font-size:13px;font-weight:700;
+      color:var(--g);letter-spacing:2px;margin-bottom:6px}
+    .install-desc{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+    .install-desc b{color:var(--text)}
+    .install-phase{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--c);
+      margin-bottom:6px;min-height:16px}
+    .install-file{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px}
+    .install-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+    .install-bar-track{flex:1;height:4px;background:rgba(255,215,0,.1);border-radius:2px;overflow:hidden}
+    .install-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--g),var(--c));
+      border-radius:2px;transition:width .25s;box-shadow:0 0 8px rgba(255,215,0,.4)}
+    .install-pct{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--g);
+      width:36px;text-align:right}
+    .btn-install{width:100%;height:46px;border:1px solid var(--g);border-radius:8px;
+      background:rgba(255,215,0,.08);font-family:'Orbitron',monospace;font-size:12px;
+      font-weight:700;letter-spacing:3px;color:var(--g);cursor:pointer;transition:all .25s}
+    .btn-install:hover{background:rgba(255,215,0,.16);box-shadow:0 0 20px rgba(255,215,0,.25)}
+    .btn-install:disabled{opacity:.5;cursor:not-allowed}
+
     .hidden{display:none!important}
   </style>
 </head>
@@ -218,6 +243,23 @@
       <div class="pg on" id="pg-home">
         <div class="pg-title">ИГРАТЬ</div>
         <div class="pg-sub">// Minecraft 1.20.1</div>
+
+        <!-- INSTALL BOX (первый запуск) -->
+        <div class="install-box" id="install-box" style="display:none">
+          <div class="install-title">⬇ УСТАНОВКА MINECRAFT + FORGE</div>
+          <div class="install-desc">
+            Первый запуск — нужно скачать клиент.<br>
+            <b>~500 МБ</b>: клиент, библиотеки, ресурсы, Forge 1.20.1.<br>
+            Займёт несколько минут в зависимости от интернета.
+          </div>
+          <div class="install-phase" id="install-phase"></div>
+          <div class="install-file"  id="install-file"></div>
+          <div class="install-bar-row">
+            <div class="install-bar-track"><div class="install-bar-fill" id="install-bar"></div></div>
+            <div class="install-pct" id="install-pct">0%</div>
+          </div>
+          <button class="btn-install" id="btn-install">⬇ УСТАНОВИТЬ</button>
+        </div>
 
         <div class="mods-box">
           <div class="mods-label">// Моды</div>
@@ -282,5 +324,6 @@
   </div>
 </div>
 <script src="renderer.js"></script>
+
 </body>
 </html>

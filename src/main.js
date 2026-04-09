@@ -1,20 +1,22 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain } = require('electron');
-const path  = require('path');
-const fs    = require('fs');
-const https = require('https');
-const http  = require('http');
-const os    = require('os');
+const path   = require('path');
+const fs     = require('fs');
+const https  = require('https');
+const http   = require('http');
+const os     = require('os');
 const { spawn, execFile } = require('child_process');
 
-const CFG = require('./config');
+const CFG       = require('./config');
+const installer = require('./installer');
 
 // ─── PATHS ───────────────────────────────────────────────────────────────────
 const LAUNCHER_DIR = path.join(os.homedir(), '.mc-launcher');
 const CLIENT_DIR   = path.join(LAUNCHER_DIR, 'client');
 const STORE_PATH   = path.join(LAUNCHER_DIR, 'settings.json');
 const UPDATE_DIR   = path.join(LAUNCHER_DIR, 'update');
+const LAUNCH_JSON  = path.join(CLIENT_DIR, 'launch.json'); // сохранённые данные запуска
 
 const RAW_URL = (owner, repo, branch, file) =>
   `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file}`;
@@ -56,11 +58,10 @@ ipcMain.on('win-min',   () => win.minimize());
 ipcMain.on('win-max',   () => win.isMaximized() ? win.unmaximize() : win.maximize());
 ipcMain.on('win-close', () => win.close());
 
-// ─── NICKNAME (сохраняем последний) ──────────────────────────────────────────
+// ─── NICKNAME ────────────────────────────────────────────────────────────────
 ipcMain.handle('nick-get', () => loadStore().nickname || '');
 ipcMain.handle('nick-set', (_, nick) => {
-  const s = loadStore(); s.nickname = nick; saveStore(s);
-  return { ok: true };
+  const s = loadStore(); s.nickname = nick; saveStore(s); return { ok: true };
 });
 
 // ─── NEWS ────────────────────────────────────────────────────────────────────
@@ -73,22 +74,20 @@ ipcMain.handle('news-fetch', async () => {
   }
 });
 
-// ─── LAUNCHER SELF-UPDATE ─────────────────────────────────────────────────────
+// ─── LAUNCHER SELF-UPDATE ────────────────────────────────────────────────────
 ipcMain.handle('launcher-check', async () => {
   try {
-    const txt = await fetchText(GH_API(CFG.LAUNCHER_OWNER, CFG.LAUNCHER_REPO, 'releases/latest'));
+    const txt  = await fetchText(GH_API(CFG.LAUNCHER_OWNER, CFG.LAUNCHER_REPO, 'releases/latest'));
     const rel  = JSON.parse(txt);
     const remote = (rel.tag_name || '').replace(/^v/, '');
     const local  = app.getVersion();
     const asset  = (rel.assets || []).find(a => {
-      if (process.platform === 'win32')   return a.name.endsWith('.exe');
-      if (process.platform === 'linux')   return a.name.endsWith('.AppImage');
+      if (process.platform === 'win32') return a.name.endsWith('.exe');
+      if (process.platform === 'linux') return a.name.endsWith('.AppImage');
       return false;
     });
     return { hasUpdate: remote !== local && !!remote, remote, local, url: asset?.browser_download_url || null };
-  } catch (e) {
-    return { hasUpdate: false, error: e.message };
-  }
+  } catch (e) { return { hasUpdate: false, error: e.message }; }
 });
 
 ipcMain.handle('launcher-update', async (_, { url }) => {
@@ -98,7 +97,7 @@ ipcMain.handle('launcher-update', async (_, { url }) => {
     const ext  = process.platform === 'win32' ? '.exe' : '.AppImage';
     const dest = path.join(UPDATE_DIR, `update${ext}`);
     await dlProgress(url, dest, (done, total) => {
-      win.webContents.send('launcher-dl-progress', { pct: total > 0 ? Math.round(done/total*100) : 0 });
+      win.webContents.send('launcher-dl-progress', { pct: total > 0 ? Math.round(done / total * 100) : 0 });
     });
     if (process.platform === 'linux') fs.chmodSync(dest, '755');
     if (process.platform === 'win32') execFile(dest, ['/S'], { detached: true });
@@ -108,7 +107,42 @@ ipcMain.handle('launcher-update', async (_, { url }) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
-// ─── MODS — проверяем при каждом запуске ──────────────────────────────────────
+// ─── INSTALL CHECK ────────────────────────────────────────────────────────────
+// Проверяем: установлен ли Minecraft+Forge (есть ли launch.json)
+ipcMain.handle('install-check', () => {
+  const installed = fs.existsSync(LAUNCH_JSON);
+  const store     = loadStore();
+  return { installed, modsVersion: store.modsVersion || null };
+});
+
+// ─── INSTALL MINECRAFT + FORGE ────────────────────────────────────────────────
+ipcMain.handle('install-start', async () => {
+  try {
+    fs.mkdirSync(CLIENT_DIR, { recursive: true });
+
+    await installer.install(CLIENT_DIR, (phase, done, total, name) => {
+      const phaseNames = {
+        manifest:  '📋 Манифест',
+        client:    '📦 Клиент',
+        libraries: '📚 Библиотеки',
+        assets:    '🖼 Ресурсы',
+        forge:     '⚙ Forge',
+        done:      '✅ Готово',
+      };
+      win.webContents.send('install-progress', {
+        phase: phaseNames[phase] || phase,
+        done, total, name,
+        pct: total > 0 ? Math.round(done / total * 100) : 0,
+      });
+    });
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ─── MODS SYNC ────────────────────────────────────────────────────────────────
 ipcMain.handle('mods-sync', async () => {
   try {
     const txt      = await fetchText(RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, 'manifest.json'));
@@ -125,7 +159,7 @@ ipcMain.handle('mods-sync', async () => {
       const url  = RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, f.path);
       const dest = path.join(CLIENT_DIR, f.path);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      await dl(url, dest);
+      await dlFile(url, dest);
       win.webContents.send('mods-progress', { done: i + 1, total: files.length, name: path.basename(f.path) });
     }
 
@@ -140,67 +174,99 @@ ipcMain.handle('mods-sync', async () => {
 // ─── LAUNCH ──────────────────────────────────────────────────────────────────
 ipcMain.handle('game-launch', async (_, { nickname }) => {
   try {
-    const jar = path.join(CLIENT_DIR, `minecraft-${CFG.MC_VERSION}.jar`);
-    if (!fs.existsSync(jar))
-      return { ok: false, error: 'Клиент не найден. Дождись загрузки модов.' };
+    if (!fs.existsSync(LAUNCH_JSON))
+      return { ok: false, error: 'Minecraft не установлен. Нажми «Установить».' };
+
+    const launch   = JSON.parse(fs.readFileSync(LAUNCH_JSON, 'utf8'));
+    const javaPath = installer.findJava();
+    const sep      = process.platform === 'win32' ? ';' : ':';
 
     const args = [
-      `-Xmx${CFG.RAM_MAX}`, `-Xms${CFG.RAM_MIN}`,
-      `-Djava.library.path=${path.join(CLIENT_DIR, 'natives')}`,
-      '-cp', jar,
-      'net.minecraft.client.main.Main',
-      '--username', nickname || CFG.DEFAULT_USERNAME,
-      '--version',  CFG.MC_VERSION,
-      '--gameDir',  CLIENT_DIR,
-      '--assetsDir', path.join(CLIENT_DIR, 'assets'),
-      '--server',   CFG.SERVER_IP,
-      '--port',     String(CFG.SERVER_PORT),
+      `-Xmx${CFG.RAM_MAX}`,
+      `-Xms${CFG.RAM_MIN}`,
+      `-Djava.library.path=${launch.nativesDir}`,
+      `-Dminecraft.launcher.brand=mc-launcher`,
+      `-Dminecraft.launcher.version=1.0`,
+      '-cp', launch.classpath.join(sep),
+      launch.mainClass,
+      '--username',    nickname || CFG.DEFAULT_USERNAME,
+      '--version',     installer.MC_VERSION,
+      '--gameDir',     launch.gameDir,
+      '--assetsDir',   launch.assetsDir,
+      '--assetIndex',  launch.assetIndex,
+      '--accessToken', 'null',
+      '--userType',    'legacy',
+      '--server',      CFG.SERVER_IP,
+      '--port',        String(CFG.SERVER_PORT),
     ];
-    spawn(CFG.JAVA_PATH, args, { detached: true, stdio: 'ignore' }).unref();
+
+    const child = spawn(javaPath, args, {
+      detached: true,
+      stdio: 'ignore',
+      cwd: launch.gameDir,
+    });
+    child.unref();
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
 // ─── HTTP UTILS ──────────────────────────────────────────────────────────────
-function fetchText(url) {
-  return new Promise((res, rej) => {
+function fetchText(url, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http;
-    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher' } }, r => {
-      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location)
-        return fetchText(r.headers.location).then(res).catch(rej);
+    const req = mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location)
+        return fetchText(res.headers.location, timeoutMs).then(resolve).catch(reject);
       let d = '';
-      r.on('data', c => d += c);
-      r.on('end', () => r.statusCode >= 400 ? rej(new Error(`HTTP ${r.statusCode}`)) : res(d));
-    }).on('error', rej);
+      res.on('data', c => d += c);
+      res.on('end', () => res.statusCode >= 400
+        ? reject(new Error(`HTTP ${res.statusCode}`)) : resolve(d));
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`Timeout: ${url}`));
+    });
   });
 }
 
-function dl(url, dest) {
-  return new Promise((res, rej) => {
+function dlFile(url, dest, retries = 3) {
+  return new Promise((resolve, reject) => {
     const mod  = url.startsWith('https') ? https : http;
-    const file = fs.createWriteStream(dest);
-    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher' } }, r => {
-      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
-        file.close(); return dl(r.headers.location, dest).then(res).catch(rej);
+    const tmp  = dest + '.tmp';
+    const file = fs.createWriteStream(tmp);
+    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close(); fs.unlink(tmp, () => {});
+        return dlFile(res.headers.location, dest, retries).then(resolve).catch(reject);
       }
-      r.pipe(file);
-      file.on('finish', () => file.close(res));
-    }).on('error', e => { fs.unlink(dest, () => {}); rej(e); });
+      if (res.statusCode >= 400) {
+        file.close(); fs.unlink(tmp, () => {});
+        if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
+    }).on('error', err => {
+      file.close(); fs.unlink(tmp, () => {});
+      if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
+      reject(err);
+    });
   });
 }
 
 function dlProgress(url, dest, onProgress) {
-  return new Promise((res, rej) => {
+  return new Promise((resolve, reject) => {
     const mod  = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(dest);
-    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher' } }, r => {
-      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
-        file.close(); return dlProgress(r.headers.location, dest, onProgress).then(res).catch(rej);
+    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close();
+        return dlProgress(res.headers.location, dest, onProgress).then(resolve).catch(reject);
       }
-      const total = parseInt(r.headers['content-length'] || '0', 10);
+      const total = parseInt(res.headers['content-length'] || '0', 10);
       let done = 0;
-      r.on('data', chunk => { done += chunk.length; onProgress(done, total); file.write(chunk); });
-      r.on('end', () => file.close(res));
-    }).on('error', e => { fs.unlink(dest, () => {}); rej(e); });
+      res.on('data', chunk => { done += chunk.length; onProgress(done, total); file.write(chunk); });
+      res.on('end', () => file.close(resolve));
+    }).on('error', e => { file.close(); reject(e); });
   });
 }
