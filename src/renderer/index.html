@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'">
+  <title>MC Launcher</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --c:#00f5ff;--p:#ff2d78;--g:#ffd700;--ok:#00ff88;
+      --d:#040810;--d2:#070f1a;--d3:#0a1628;
+      --panel:rgba(6,18,38,.93);--glass:rgba(0,245,255,.04);
+      --border:rgba(0,245,255,.18);--text:#c8e8f8;--muted:#4a7090;
+      --gc:0 0 20px rgba(0,245,255,.5);--gp:0 0 20px rgba(255,45,120,.5);
+    }
+    html,body{width:100%;height:100%;background:transparent;overflow:hidden;
+      font-family:'Rajdhani',sans-serif;color:var(--text);user-select:none;-webkit-app-region:no-drag}
+    /* scanlines */
+    body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px)}
+
+    #app{width:100vw;height:100vh;border-radius:12px;overflow:hidden;position:relative;
+      border:1px solid rgba(0,245,255,.15);
+      box-shadow:0 0 0 1px rgba(0,245,255,.06),0 30px 80px rgba(0,0,0,.8),inset 0 1px 0 rgba(0,245,255,.08);
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%,rgba(0,100,180,.12) 0%,transparent 60%),
+        radial-gradient(ellipse 60% 40% at 90% 90%,rgba(255,45,120,.07) 0%,transparent 50%),
+        linear-gradient(135deg,#040810,#060d1a 50%,#080810)}
+    /* grid */
+    #app::after{content:'';position:absolute;inset:0;pointer-events:none;
+      background-image:linear-gradient(rgba(0,245,255,.025) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(0,245,255,.025) 1px,transparent 1px);
+      background-size:40px 40px}
+
+    /* ── TITLEBAR ── */
+    #tb{height:40px;display:flex;align-items:center;justify-content:space-between;
+      padding:0 14px 0 20px;background:rgba(4,8,16,.75);border-bottom:1px solid var(--border);
+      -webkit-app-region:drag;position:relative;z-index:100;flex-shrink:0}
+    #tb::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--c),transparent);opacity:.35}
+    .tb-logo{font-family:'Orbitron',monospace;font-size:12px;font-weight:700;
+      letter-spacing:4px;color:var(--c);text-shadow:var(--gc)}
+    .tb-logo b{color:var(--p);font-weight:700;text-shadow:var(--gp)}
+    .wc{display:flex;gap:7px;-webkit-app-region:no-drag}
+    .wb{width:26px;height:26px;border:1px solid var(--border);background:var(--glass);
+      border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+      font-size:10px;color:var(--muted);transition:all .18s}
+    .wb:hover{border-color:var(--c);color:var(--c);box-shadow:var(--gc)}
+    .wb.x:hover{border-color:var(--p);color:var(--p);box-shadow:var(--gp)}
+
+    /* ── BANNER (launcher update) ── */
+    #banner{display:none;align-items:center;gap:10px;padding:7px 20px;flex-shrink:0;
+      background:rgba(255,215,0,.06);border-bottom:1px solid rgba(255,215,0,.22)}
+    #banner.on{display:flex}
+    .bn-txt{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--g);flex:1}
+    .bn-btn{padding:4px 12px;border:1px solid var(--g);background:rgba(255,215,0,.08);
+      border-radius:4px;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;
+      letter-spacing:2px;color:var(--g);cursor:pointer;transition:all .18s;white-space:nowrap}
+    .bn-btn:hover{background:rgba(255,215,0,.18);box-shadow:0 0 12px rgba(255,215,0,.3)}
+    .bn-skip{padding:4px 10px;border:1px solid var(--muted);background:transparent;
+      border-radius:4px;font-size:10px;color:var(--muted);cursor:pointer;transition:all .18s}
+    .bn-skip:hover{color:var(--text);border-color:var(--text)}
+
+    /* ── LAYOUT ── */
+    #layout{display:flex;height:calc(100vh - 40px);position:relative;z-index:1}
+
+    /* ── SIDEBAR ── */
+    #sb{width:195px;flex-shrink:0;background:rgba(4,8,16,.65);
+      border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 0 14px}
+    .sb-logo{padding:0 16px 18px;border-bottom:1px solid var(--border);margin-bottom:10px;
+      font-family:'Orbitron',monospace;font-size:16px;font-weight:900;letter-spacing:2px;
+      color:#fff;text-shadow:var(--gc)}
+    .sb-logo span{color:var(--p);text-shadow:var(--gp)}
+    nav{flex:1}
+    .ni{display:flex;align-items:center;gap:9px;padding:10px 16px;cursor:pointer;
+      color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+      transition:all .18s;border-left:2px solid transparent}
+    .ni:hover{color:var(--text);background:rgba(0,245,255,.035)}
+    .ni.on{color:var(--c);border-left-color:var(--c);background:rgba(0,245,255,.055);
+      text-shadow:0 0 10px rgba(0,245,255,.35)}
+    .ni-ic{font-size:15px;width:18px;text-align:center}
+    .sb-bot{padding:12px 16px 0;border-top:1px solid var(--border)}
+    .ver{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      text-align:center;margin-top:8px}
+
+    /* ── PAGES ── */
+    #pages{flex:1;overflow:hidden;position:relative}
+    .pg{position:absolute;inset:0;padding:26px;overflow-y:auto;display:none;
+      animation:fi .2s ease}
+    .pg.on{display:block}
+    @keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    .pg::-webkit-scrollbar{width:3px}
+    .pg::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+    .pg-title{font-family:'Orbitron',monospace;font-size:19px;font-weight:900;color:var(--c);
+      letter-spacing:3px;text-transform:uppercase;text-shadow:var(--gc);margin-bottom:3px}
+    .pg-sub{font-size:12px;color:var(--muted);letter-spacing:1px;margin-bottom:22px}
+
+    /* ── HOME PAGE ── */
+    /* mods status */
+    .mods-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+      padding:14px 18px;margin-bottom:12px}
+    .mods-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;
+      color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+    .bar-track{height:3px;background:rgba(0,245,255,.08);border-radius:2px;overflow:hidden;margin-bottom:7px}
+    .bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--c),var(--p));
+      border-radius:2px;transition:width .25s;box-shadow:0 0 6px var(--c)}
+    .mods-file{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+    .mods-st{font-family:'Share Tech Mono',monospace;font-size:11px}
+    .mods-st.chk{color:var(--c)} .mods-st.ok{color:var(--ok)} .mods-st.err{color:var(--p)}
+
+    /* server card */
+    .sv-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+      padding:22px;position:relative;overflow:hidden}
+    .sv-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,var(--c),var(--p),transparent)}
+    .sv-row{display:flex;align-items:center;gap:18px;margin-bottom:18px}
+    .sv-ic{width:60px;height:60px;background:linear-gradient(135deg,var(--d3),#0a1f3a);
+      border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;
+      justify-content:center;font-size:26px;flex-shrink:0}
+    .sv-name{font-family:'Orbitron',monospace;font-size:16px;font-weight:700;
+      color:#fff;letter-spacing:2px}
+    .sv-ver{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--c);margin-top:3px}
+    .sv-addr{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px}
+
+    /* nickname input */
+    .nick-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+    .nick-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;
+      color:var(--muted);text-transform:uppercase;white-space:nowrap}
+    .nick-input{flex:1;height:38px;background:rgba(0,245,255,.04);border:1px solid var(--border);
+      border-radius:6px;padding:0 12px;font-family:'Share Tech Mono',monospace;font-size:13px;
+      color:var(--text);outline:none;transition:all .18s;min-width:0}
+    .nick-input:focus{border-color:var(--c);background:rgba(0,245,255,.07);
+      box-shadow:0 0 0 2px rgba(0,245,255,.07),var(--gc)}
+    .nick-input::placeholder{color:rgba(74,112,144,.55)}
+
+    /* launch button */
+    .btn-launch{width:100%;height:50px;border:none;border-radius:8px;
+      background:linear-gradient(135deg,#005c80,#007399);
+      font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:3px;
+      color:#fff;cursor:pointer;position:relative;overflow:hidden;transition:all .28s;
+      text-shadow:0 0 10px rgba(0,245,255,.45)}
+    .btn-launch::before{content:'';position:absolute;inset:0;
+      background:linear-gradient(135deg,rgba(0,245,255,.18),transparent);
+      opacity:0;transition:opacity .28s}
+    .btn-launch:hover::before{opacity:1}
+    .btn-launch:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(0,245,255,.28)}
+    .btn-launch:active{transform:translateY(0)}
+    .btn-launch:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+
+    /* ── NEWS ── */
+    .nw-list{display:flex;flex-direction:column;gap:12px}
+    .nw-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+      padding:16px 18px;position:relative;overflow:hidden;transition:border-color .18s}
+    .nw-card:hover{border-color:rgba(0,245,255,.32)}
+    .nw-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+      background:linear-gradient(180deg,var(--c),var(--p))}
+    .nw-date{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:5px}
+    .nw-title{font-family:'Orbitron',monospace;font-size:12px;font-weight:700;
+      color:#fff;letter-spacing:1px;margin-bottom:7px}
+    .nw-body{font-size:13px;color:var(--text);line-height:1.55}
+    .sk{background:linear-gradient(90deg,var(--d3) 25%,rgba(0,245,255,.035) 50%,var(--d3) 75%);
+      background-size:200% 100%;animation:sk 1.4s infinite;border-radius:3px}
+    @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+    /* ── SETTINGS ── */
+    .sg{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+      padding:18px;margin-bottom:14px}
+    .sg-title{font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;
+      color:var(--c);text-transform:uppercase;margin-bottom:14px;padding-bottom:9px;
+      border-bottom:1px solid var(--border)}
+    .sr{display:flex;align-items:center;justify-content:space-between;padding:7px 0}
+    .sl{font-size:13px;color:var(--text);font-weight:600}
+    .sv{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted)}
+
+    .hidden{display:none!important}
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- TITLEBAR -->
+  <div id="tb">
+    <div class="tb-logo">YOUR<b>SERVER</b> &nbsp;// LAUNCHER</div>
+    <div class="wc">
+      <div class="wb" id="wmin">─</div>
+      <div class="wb" id="wmax">□</div>
+      <div class="wb x" id="wcls">✕</div>
+    </div>
+  </div>
+
+  <!-- LAUNCHER UPDATE BANNER -->
+  <div id="banner">
+    <span class="bn-txt" id="bn-txt">⬆ Доступна новая версия лаунчера!</span>
+    <button class="bn-btn" id="bn-upd">ОБНОВИТЬ</button>
+    <button class="bn-skip" id="bn-skip">пропустить</button>
+  </div>
+
+  <div id="layout">
+    <!-- SIDEBAR -->
+    <div id="sb">
+      <div class="sb-logo">YOUR<span>SERVER</span></div>
+      <nav>
+        <div class="ni on" data-p="home"><span class="ni-ic">⚡</span>ИГРАТЬ</div>
+        <div class="ni" data-p="news"><span class="ni-ic">📡</span>НОВОСТИ</div>
+        <div class="ni" data-p="settings"><span class="ni-ic">⚙</span>НАСТРОЙКИ</div>
+      </nav>
+      <div class="sb-bot">
+        <div class="ver" id="ver-txt">v1.0.0</div>
+      </div>
+    </div>
+
+    <!-- PAGES -->
+    <div id="pages">
+
+      <!-- HOME -->
+      <div class="pg on" id="pg-home">
+        <div class="pg-title">ИГРАТЬ</div>
+        <div class="pg-sub">// Minecraft 1.20.1</div>
+
+        <div class="mods-box">
+          <div class="mods-label">// Моды</div>
+          <div class="bar-track"><div class="bar-fill" id="mbar"></div></div>
+          <div class="mods-file" id="mfile">&nbsp;</div>
+          <div class="mods-st chk" id="mst">⏳ Проверяю моды...</div>
+        </div>
+
+        <div class="sv-card">
+          <div class="sv-row">
+            <div class="sv-ic">⛏</div>
+            <div>
+              <div class="sv-name">YOUR SERVER</div>
+              <div class="sv-ver">Minecraft 1.20.1 · Forge</div>
+              <div class="sv-addr" id="sv-addr">yourserver.playit.gg</div>
+            </div>
+          </div>
+          <div class="nick-row">
+            <span class="nick-label">Никнейм</span>
+            <input class="nick-input" id="nick" type="text" placeholder="Твой никнейм" maxlength="16" spellcheck="false">
+          </div>
+          <button class="btn-launch" id="btn-play" disabled>▶ &nbsp;ЗАПУСТИТЬ</button>
+        </div>
+      </div>
+
+      <!-- NEWS -->
+      <div class="pg" id="pg-news">
+        <div class="pg-title">НОВОСТИ</div>
+        <div class="pg-sub">// Последние события</div>
+        <div class="nw-list" id="nw-list">
+          <div class="nw-card" style="border-left:3px solid transparent">
+            <div class="sk" style="width:70px;height:10px;margin-bottom:7px"></div>
+            <div class="sk" style="width:55%;height:13px;margin-bottom:9px"></div>
+            <div class="sk" style="width:100%;height:11px;margin-bottom:4px"></div>
+            <div class="sk" style="width:75%;height:11px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="pg" id="pg-settings">
+        <div class="pg-title">НАСТРОЙКИ</div>
+        <div class="pg-sub">// Информация</div>
+        <div class="sg">
+          <div class="sg-title">Лаунчер</div>
+          <div class="sr"><span class="sl">Версия</span><span class="sv" id="s-lver">—</span></div>
+          <div class="sr"><span class="sl">Версия модов</span><span class="sv" id="s-mver">—</span></div>
+        </div>
+        <div class="sg">
+          <div class="sg-title">Сервер</div>
+          <div class="sr"><span class="sl">Адрес</span><span class="sv" id="s-addr">—</span></div>
+          <div class="sr"><span class="sl">Minecraft</span><span class="sv">1.20.1 · Forge</span></div>
+        </div>
+        <div class="sg">
+          <div class="sg-title">Система</div>
+          <div class="sr"><span class="sl">Electron</span><span class="sv" id="s-elec">—</span></div>
+          <div class="sr"><span class="sl">ОС</span><span class="sv" id="s-os">—</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>
