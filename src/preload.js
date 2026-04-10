@@ -22,7 +22,10 @@ contextBridge.exposeInMainWorld('api', {
 
   // Моды
   modsSync:   ()  => ipcRenderer.invoke('mods-sync'),
-  onModsProg: cb  => ipcRenderer.on('mods-progress', (_, d) => cb(d)),
+  onModsProg:   cb => ipcRenderer.on('mods-progress', (_, d) => cb(d)),
+  onModsStatus: cb => ipcRenderer.on('mods-status',   (_, d) => cb(d)),
 
-  launch: data => ipcRenderer.invoke('game-launch', data),
+  launch:      data => ipcRenderer.invoke('game-launch', data),
+  getAppInfo:  ()   => ipcRenderer.invoke('app-info'),
+  onGameError: cb => ipcRenderer.on('game-error', (_, d) => cb(d)),
 });
