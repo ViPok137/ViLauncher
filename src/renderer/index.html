@@ -102,12 +102,23 @@
     .mods-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;
       padding:14px 18px;margin-bottom:12px}
     .mods-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;
-      color:var(--muted);text-transform:uppercase;margin-bottom:8px}
-    .bar-track{height:3px;background:rgba(0,245,255,.08);border-radius:2px;overflow:hidden;margin-bottom:7px}
+      color:var(--muted);text-transform:uppercase;margin-bottom:8px;
+      display:flex;justify-content:space-between;align-items:center}
+    .mods-counter{color:var(--c)}
+    /* общий прогресс */
+    .bar-track{height:3px;background:rgba(0,245,255,.08);border-radius:2px;overflow:hidden;margin-bottom:4px}
     .bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--c),var(--p));
-      border-radius:2px;transition:width .25s;box-shadow:0 0 6px var(--c)}
-    .mods-file{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+      border-radius:2px;transition:width .2s;box-shadow:0 0 6px var(--c)}
+    /* прогресс текущего файла */
+    .mods-file-row{display:flex;justify-content:space-between;align-items:center;
+      margin-bottom:4px;gap:8px}
+    .mods-fname{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text);
+      flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mods-fsize{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      white-space:nowrap;flex-shrink:0}
+    .filebar-track{height:2px;background:rgba(255,215,0,.1);border-radius:2px;overflow:hidden;margin-bottom:8px}
+    .filebar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--g),var(--c));
+      border-radius:2px;transition:width .15s}
     .mods-st{font-family:'Share Tech Mono',monospace;font-size:11px}
     .mods-st.chk{color:var(--c)} .mods-st.ok{color:var(--ok)} .mods-st.err{color:var(--p)}
 
@@ -200,6 +211,10 @@
     .btn-install:hover{background:rgba(255,215,0,.16);box-shadow:0 0 20px rgba(255,215,0,.25)}
     .btn-install:disabled{opacity:.5;cursor:not-allowed}
 
+    /* nick error */
+    .nick-err{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--p);
+      margin-top:-10px;margin-bottom:10px;display:none;padding-left:2px}
+
     .hidden{display:none!important}
   </style>
 </head>
@@ -207,7 +222,7 @@
 <div id="app">
   <!-- TITLEBAR -->
   <div id="tb">
-    <div class="tb-logo">YOUR<b>SERVER</b> &nbsp;// LAUNCHER</div>
+    <div class="tb-logo">VI<b>POK</b> &nbsp;// LAUNCHER</div>
     <div class="wc">
       <div class="wb" id="wmin">─</div>
       <div class="wb" id="wmax">□</div>
@@ -225,7 +240,7 @@
   <div id="layout">
     <!-- SIDEBAR -->
     <div id="sb">
-      <div class="sb-logo">YOUR<span>SERVER</span></div>
+      <div class="sb-logo">VI<span>POK</span> SERVER</div>
       <nav>
         <div class="ni on" data-p="home"><span class="ni-ic">⚡</span>ИГРАТЬ</div>
         <div class="ni" data-p="news"><span class="ni-ic">📡</span>НОВОСТИ</div>
@@ -261,10 +276,21 @@
           <button class="btn-install" id="btn-install">⬇ УСТАНОВИТЬ</button>
         </div>
 
-        <div class="mods-box">
-          <div class="mods-label">// Моды</div>
+        <div class="mods-box" id="mods-box">
+          <div class="mods-label">
+            <span>// Моды</span>
+            <span class="mods-counter" id="mods-counter"></span>
+          </div>
+          <!-- Общий прогресс -->
           <div class="bar-track"><div class="bar-fill" id="mbar"></div></div>
-          <div class="mods-file" id="mfile">&nbsp;</div>
+          <!-- Текущий файл -->
+          <div class="mods-file-row">
+            <span class="mods-fname" id="mods-fname"></span>
+            <span class="mods-fsize" id="mods-fsize"></span>
+          </div>
+          <!-- Прогресс текущего файла -->
+          <div class="filebar-track"><div class="filebar-fill" id="mods-filebar"></div></div>
+          <!-- Статус -->
           <div class="mods-st chk" id="mst">⏳ Проверяю моды...</div>
         </div>
 
@@ -272,15 +298,16 @@
           <div class="sv-row">
             <div class="sv-ic">⛏</div>
             <div>
-              <div class="sv-name">YOUR SERVER</div>
+              <div class="sv-name">VIPOK SERVER</div>
               <div class="sv-ver">Minecraft 1.20.1 · Forge</div>
-              <div class="sv-addr" id="sv-addr">yourserver.playit.gg</div>
+              <div class="sv-addr">subjects-emirates.gl.joinmc.link</div>
             </div>
           </div>
           <div class="nick-row">
             <span class="nick-label">Никнейм</span>
             <input class="nick-input" id="nick" type="text" placeholder="Твой никнейм" maxlength="16" spellcheck="false">
           </div>
+          <div class="nick-err" id="nick-err"></div>
           <button class="btn-launch" id="btn-play" disabled>▶ &nbsp;ЗАПУСТИТЬ</button>
         </div>
       </div>
@@ -310,13 +337,14 @@
         </div>
         <div class="sg">
           <div class="sg-title">Сервер</div>
-          <div class="sr"><span class="sl">Адрес</span><span class="sv" id="s-addr">—</span></div>
+          <div class="sr"><span class="sl">Адрес</span><span class="sv">subjects-emirates.gl.joinmc.link</span></div>
           <div class="sr"><span class="sl">Minecraft</span><span class="sv">1.20.1 · Forge</span></div>
         </div>
         <div class="sg">
           <div class="sg-title">Система</div>
           <div class="sr"><span class="sl">Electron</span><span class="sv" id="s-elec">—</span></div>
           <div class="sr"><span class="sl">ОС</span><span class="sv" id="s-os">—</span></div>
+          <div class="sr"><span class="sl">Java</span><span class="sv" id="s-java" style="font-size:9px;word-break:break-all">—</span></div>
         </div>
       </div>
 
