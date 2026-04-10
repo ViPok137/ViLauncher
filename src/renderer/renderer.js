@@ -13,7 +13,8 @@ document.querySelectorAll('.ni').forEach(el => {
     document.querySelectorAll('.pg').forEach(p => p.classList.remove('on'));
     el.classList.add('on');
     $('pg-' + el.dataset.p).classList.add('on');
-    if (el.dataset.p === 'news') loadNews();
+    if (el.dataset.p === 'news')     loadNews();
+    if (el.dataset.p === 'settings') fillSettings();
   };
 });
 
@@ -125,23 +126,74 @@ $('btn-install').onclick = async () => {
 // ─── MODS SYNC ───────────────────────────────────────────────────────────────
 let modsSyncRunning = false;
 
+// Регистрируем обработчики один раз глобально (не внутри функции!)
+let _modsProgRegistered = false;
+
+function fmt(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
 async function runModsSync() {
-  if (modsSyncRunning) return;   // защита от двойного запуска
+  if (modsSyncRunning) return;
   modsSyncRunning = true;
   modsReady = false;
   updatePlayBtn();
 
-  const bar = $('mbar'), st = $('mst'), fl = $('mfile');
-  st.className   = 'mods-st chk';
-  st.textContent = '⏳ Проверяю моды...';
-  bar.style.width = '0%';
-  fl.textContent  = '';
+  const totalBar  = $('mbar');
+  const filebar   = $('mods-filebar');
+  const st        = $('mst');
+  const fname     = $('mods-fname');
+  const fsize     = $('mods-fsize');
+  const fcounter  = $('mods-counter');
 
-  api.onModsProg(({ done, total, name }) => {
-    bar.style.width = (total > 0 ? Math.round(done / total * 100) : 0) + '%';
-    fl.textContent  = name;
-    st.textContent  = `⬇ Загрузка ${done}/${total}...`;
-  });
+  // Сброс UI
+  totalBar.style.width  = '0%';
+  filebar.style.width   = '0%';
+  fname.textContent     = '';
+  fsize.textContent     = '';
+  fcounter.textContent  = '';
+  st.className          = 'mods-st chk';
+  st.textContent        = '⏳ Подключаюсь к GitHub...';
+
+  // Регистрируем обработчики только один раз
+  if (!_modsProgRegistered) {
+    _modsProgRegistered = true;
+
+    api.onModsStatus(({ text }) => {
+      st.textContent = '⏳ ' + text;
+    });
+
+    api.onModsProg(({ fileIndex, total, name: n, filePct, fileDone, fileSize, done: fileDone_ }) => {
+      // Общий прогресс по файлам
+      const totalPct = total > 0 ? Math.round((fileIndex / total) * 100) : 0;
+      totalBar.style.width = totalPct + '%';
+      fcounter.textContent = `${fileIndex}/${total}`;
+
+      // Прогресс текущего файла
+      filebar.style.width = (filePct || 0) + '%';
+      fname.textContent   = n || '';
+
+      // Размер
+      if (fileSize > 0) {
+        fsize.textContent = `${fmt(fileDone)} / ${fmt(fileSize)}`;
+      } else if (fileDone > 0) {
+        fsize.textContent = fmt(fileDone);
+      } else {
+        fsize.textContent = '';
+      }
+
+      // Статус
+      if (fileDone_) {
+        st.className   = 'mods-st chk';
+        st.textContent = `⬇ Скачано ${fileIndex} из ${total}`;
+      } else {
+        st.className   = 'mods-st chk';
+        st.textContent = `⬇ Скачиваю ${fileIndex + 1} из ${total}...`;
+      }
+    });
+  }
 
   let r;
   try {
@@ -150,23 +202,25 @@ async function runModsSync() {
     r = { ok: false, error: err.message || 'Неизвестная ошибка' };
   }
 
-  bar.style.width = '100%';
-  fl.textContent  = '';
-  modsReady = true;
+  totalBar.style.width = '100%';
+  filebar.style.width  = '100%';
+  fname.textContent    = '';
+  fsize.textContent    = '';
+  modsReady       = true;
   modsSyncRunning = false;
 
   if (r.ok) {
     st.className   = 'mods-st ok';
+    fcounter.textContent = '';
     st.textContent = r.updated
-      ? `✓ Моды обновлены (${r.version})`
+      ? `✓ Моды обновлены до версии ${r.version}`
       : `✓ ${r.msg}`;
   } else {
     st.className   = 'mods-st err';
-    const err = r.error || 'Ошибка синхронизации';
-    // Подсказка если manifest.json ещё не выложен
-    const hint = /HTTP 4/.test(err) ? ' (manifest.json не найден на GitHub)' : '';
+    const err  = r.error || 'Ошибка синхронизации';
+    const hint = /HTTP 4/.test(err) ? ' — manifest.json не найден на GitHub' :
+                 /Timeout/.test(err) ? ' — GitHub недоступен, проверь интернет' : '';
     st.textContent = '✗ ' + err + hint;
-    // Кнопка всё равно разблокируется — можно играть без обновления модов
   }
 
   updatePlayBtn();
@@ -196,9 +250,16 @@ $('bn-upd').onclick = async () => {
 $('bn-skip').onclick = () => $('banner').classList.remove('on');
 
 // ─── LAUNCH ──────────────────────────────────────────────────────────────────
+// Слушаем ошибки Java (если процесс упал сразу)
+api.onGameError(({ error }) => {
+  $('mst').className = 'mods-st err';
+  $('mst').textContent = '✗ ' + error.split('\n')[0]; // первая строка в статус
+  console.error('Game error:', error);
+});
+
 $('btn-play').onclick = async () => {
   const nick = nickInput.value.trim();
-  if (!isNickValid(nick)) return; // двойная защита
+  if (!isNickValid(nick)) return;
 
   $('btn-play').disabled = true;
   $('btn-play').textContent = '⏳ ЗАПУСК...';
@@ -209,11 +270,17 @@ $('btn-play').onclick = async () => {
     $('btn-play').disabled = false;
     $('btn-play').textContent = '▶ ЗАПУСТИТЬ';
     updatePlayBtn();
-  }, 4000);
+  }, 5000);
 
   if (!r.ok) {
     $('mst').className = 'mods-st err';
     $('mst').textContent = '✗ ' + (r.error || 'Ошибка запуска');
+  } else {
+    $('mst').className = 'mods-st ok';
+    $('mst').textContent = '✓ Майнкрафт запускается...';
+    if (r.logPath) {
+      $('mods-fname').textContent = 'Лог: ' + r.logPath;
+    }
   }
 };
 
@@ -239,4 +306,15 @@ async function loadNews() {
 
 function e(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+async function fillSettings() {
+  // Версия лаунчера
+  const info = await api.getAppInfo();
+  if ($('s-lver'))  $('s-lver').textContent  = 'v' + (info.version || '1.0.0');
+  if ($('s-mver'))  $('s-mver').textContent  = info.modsVersion || 'Не установлены';
+  if ($('s-elec'))  $('s-elec').textContent  = info.electron    || '—';
+  if ($('s-os'))    $('s-os').textContent     = info.os          || '—';
+  if ($('s-java'))  $('s-java').textContent   = info.java        || '—';
 }
