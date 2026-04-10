@@ -59,6 +59,21 @@ ipcMain.on('win-max',   () => win.isMaximized() ? win.unmaximize() : win.maximiz
 ipcMain.on('win-close', () => win.close());
 
 // ─── NICKNAME ────────────────────────────────────────────────────────────────
+// ─── APP INFO ────────────────────────────────────────────────────────────────
+ipcMain.handle('app-info', () => {
+  const store = loadStore();
+  const javaPath = (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java')
+    ? CFG.JAVA_PATH
+    : installer.findJava(LAUNCHER_DIR);
+  return {
+    version:     app.getVersion(),
+    modsVersion: store.modsVersion || null,
+    electron:    process.versions.electron,
+    os:          process.platform === 'win32' ? 'Windows' : process.platform,
+    java:        javaPath,
+  };
+});
+
 ipcMain.handle('nick-get', () => loadStore().nickname || '');
 ipcMain.handle('nick-set', (_, nick) => {
   const s = loadStore(); s.nickname = nick; saveStore(s); return { ok: true };
@@ -145,8 +160,17 @@ ipcMain.handle('install-start', async () => {
 // ─── MODS SYNC ────────────────────────────────────────────────────────────────
 ipcMain.handle('mods-sync', async () => {
   try {
-    const txt      = await fetchText(RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, 'manifest.json'));
-    const manifest = JSON.parse(txt);
+    // Сообщаем что идёт запрос манифеста
+    win.webContents.send('mods-status', { text: 'Получаю список модов с GitHub...' });
+
+    let manifestTxt;
+    try {
+      manifestTxt = await fetchText(RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, 'manifest.json'));
+    } catch (e) {
+      return { ok: false, error: 'Не удалось получить manifest.json: ' + e.message };
+    }
+
+    const manifest = JSON.parse(manifestTxt);
     const store    = loadStore();
 
     if (manifest.version === store.modsVersion) {
@@ -154,13 +178,32 @@ ipcMain.handle('mods-sync', async () => {
     }
 
     const files = manifest.files || [];
+    win.webContents.send('mods-status', { text: `Найдено ${files.length} файлов для обновления` });
+
     for (let i = 0; i < files.length; i++) {
-      const f    = files[i];
-      const url  = RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, f.path);
-      const dest = path.join(CLIENT_DIR, f.path);
+      const f     = files[i];
+      const fname = path.basename(f.path);
+      const url   = RAW_URL(CFG.MODS_OWNER, CFG.MODS_REPO, CFG.MODS_BRANCH, f.path);
+      const dest  = path.join(CLIENT_DIR, f.path);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      await dlFile(url, dest);
-      win.webContents.send('mods-progress', { done: i + 1, total: files.length, name: path.basename(f.path) });
+
+      // Сообщаем начало загрузки файла
+      win.webContents.send('mods-progress', {
+        fileIndex: i, total: files.length, name: fname, filePct: 0, fileDone: 0, fileSize: 0,
+      });
+
+      await dlFileProgress(url, dest, (fileDone, fileSize) => {
+        win.webContents.send('mods-progress', {
+          fileIndex: i, total: files.length, name: fname,
+          filePct: fileSize > 0 ? Math.round(fileDone / fileSize * 100) : 0,
+          fileDone, fileSize,
+        });
+      });
+
+      // Файл готов — сигнал что этот файл завершён
+      win.webContents.send('mods-progress', {
+        fileIndex: i + 1, total: files.length, name: fname, filePct: 100, done: true,
+      });
     }
 
     store.modsVersion = manifest.version;
@@ -178,8 +221,25 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       return { ok: false, error: 'Minecraft не установлен. Нажми «Установить».' };
 
     const launch   = JSON.parse(fs.readFileSync(LAUNCH_JSON, 'utf8'));
-    const javaPath = installer.findJava();
+    // CFG.JAVA_PATH имеет приоритет — если задан вручную в config.js
+    const javaPath = (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java')
+      ? CFG.JAVA_PATH
+      : installer.findJava(LAUNCHER_DIR);
     const sep      = process.platform === 'win32' ? ';' : ':';
+
+    // Проверяем что java существует
+    if (javaPath !== 'java' && !fs.existsSync(javaPath)) {
+      return { ok: false, error: `Java не найдена: ${javaPath}` };
+    }
+
+    // Проверяем classpath
+    const missing = launch.classpath.filter(p => !fs.existsSync(p));
+    if (missing.length > 0) {
+      return { ok: false, error: `Отсутствуют файлы classpath (${missing.length} шт). Переустанови клиент.` };
+    }
+
+    const logPath = path.join(LAUNCHER_DIR, 'minecraft.log');
+    const logFile = fs.openSync(logPath, 'w');
 
     const args = [
       `-Xmx${CFG.RAM_MAX}`,
@@ -187,6 +247,9 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       `-Djava.library.path=${launch.nativesDir}`,
       `-Dminecraft.launcher.brand=mc-launcher`,
       `-Dminecraft.launcher.version=1.0`,
+      // Forge 47.x требует эти флаги
+      '--add-opens', 'java.base/java.util.jar=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
       '-cp', launch.classpath.join(sep),
       launch.mainClass,
       '--username',    nickname || CFG.DEFAULT_USERNAME,
@@ -201,12 +264,31 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
     ];
 
     const child = spawn(javaPath, args, {
-      detached: true,
-      stdio: 'ignore',
-      cwd: launch.gameDir,
+      detached:    true,
+      stdio:       ['ignore', logFile, logFile],
+      cwd:         launch.gameDir,
+      windowsHide: true,   // ← скрывает cmd на Windows
     });
+
+    child.on('error', err => {
+      fs.closeSync(logFile);
+      win.webContents.send('game-error', { error: 'Не удалось запустить Java: ' + err.message });
+    });
+
+    // Если процесс упал сразу (< 5 сек) — читаем лог и показываем ошибку
+    child.on('exit', (code) => {
+      fs.closeSync(logFile);
+      if (code !== 0 && code !== null) {
+        try {
+          const log = fs.readFileSync(logPath, 'utf8').slice(-2000);
+          const lastLines = log.split('\n').slice(-15).join('\n');
+          win.webContents.send('game-error', { error: `Java завершилась с кодом ${code}.\nЛог: ${lastLines}` });
+        } catch {}
+      }
+    });
+
     child.unref();
-    return { ok: true };
+    return { ok: true, logPath };
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
@@ -268,5 +350,37 @@ function dlProgress(url, dest, onProgress) {
       res.on('data', chunk => { done += chunk.length; onProgress(done, total); file.write(chunk); });
       res.on('end', () => file.close(resolve));
     }).on('error', e => { file.close(); reject(e); });
+  });
+}
+// dlFileProgress — скачивание с побайтовым прогрессом + retry
+function dlFileProgress(url, dest, onProgress, retries = 3) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const tmp = dest + '.tmp';
+    const file = fs.createWriteStream(tmp);
+    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close(); fs.unlink(tmp, () => {});
+        return dlFileProgress(res.headers.location, dest, onProgress, retries).then(resolve).catch(reject);
+      }
+      if (res.statusCode >= 400) {
+        file.close(); fs.unlink(tmp, () => {});
+        if (retries > 0) return setTimeout(() => dlFileProgress(url, dest, onProgress, retries - 1).then(resolve).catch(reject), 1500);
+        return reject(new Error(`HTTP ${res.statusCode} — ${url}`));
+      }
+      const fileSize = parseInt(res.headers['content-length'] || '0', 10);
+      let fileDone = 0;
+      res.on('data', chunk => {
+        fileDone += chunk.length;
+        onProgress(fileDone, fileSize);
+        file.write(chunk);
+      });
+      res.on('end', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
+      res.on('error', err => { file.close(); fs.unlink(tmp, () => {}); reject(err); });
+    }).on('error', err => {
+      file.close(); fs.unlink(tmp, () => {});
+      if (retries > 0) return setTimeout(() => dlFileProgress(url, dest, onProgress, retries - 1).then(resolve).catch(reject), 1500);
+      reject(err);
+    });
   });
 }
