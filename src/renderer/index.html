@@ -215,6 +215,17 @@
     .nick-err{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--p);
       margin-top:-10px;margin-bottom:10px;display:none;padding-left:2px}
 
+    /* server status */
+    .sv-status{display:flex;align-items:center;gap:6px;margin-top:4px}
+    .sv-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;
+      transition:background .4s,box-shadow .4s}
+    .sv-dot.online{background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s ease-in-out infinite}
+    .sv-dot.offline{background:var(--p);box-shadow:0 0 6px var(--p)}
+    .sv-status-txt{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      transition:color .3s}
+    .sv-status-txt.online{color:var(--ok)}
+    .sv-status-txt.offline{color:var(--p)}
+
     .hidden{display:none!important}
   </style>
 </head>
@@ -301,6 +312,10 @@
               <div class="sv-name">VIPOK SERVER</div>
               <div class="sv-ver">Minecraft 1.20.1 · Forge</div>
               <div class="sv-addr">subjects-emirates.gl.joinmc.link</div>
+              <div class="sv-status">
+                <div class="sv-dot" id="sv-dot"></div>
+                <span class="sv-status-txt" id="sv-status-txt">Проверяю...</span>
+              </div>
             </div>
           </div>
           <div class="nick-row">

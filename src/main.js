@@ -62,15 +62,20 @@ ipcMain.on('win-close', () => win.close());
 // ─── APP INFO ────────────────────────────────────────────────────────────────
 ipcMain.handle('app-info', () => {
   const store = loadStore();
-  const javaPath = (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java')
-    ? CFG.JAVA_PATH
+  const bundled = path.join(LAUNCHER_DIR, 'jre17', 'bin',
+    process.platform === 'win32' ? 'java.exe' : 'java');
+  const javaPath = fs.existsSync(bundled) ? bundled
+    : (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java') ? CFG.JAVA_PATH
     : installer.findJava(LAUNCHER_DIR);
+  const javaLabel = fs.existsSync(bundled)
+    ? 'Bundled JRE 17 (авто)'
+    : javaPath;
   return {
     version:     app.getVersion(),
     modsVersion: store.modsVersion || null,
     electron:    process.versions.electron,
     os:          process.platform === 'win32' ? 'Windows' : process.platform,
-    java:        javaPath,
+    java:        javaLabel,
   };
 });
 
@@ -222,9 +227,15 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
 
     const launch   = JSON.parse(fs.readFileSync(LAUNCH_JSON, 'utf8'));
     // CFG.JAVA_PATH имеет приоритет — если задан вручную в config.js
-    const javaPath = (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java')
-      ? CFG.JAVA_PATH
-      : installer.findJava(LAUNCHER_DIR);
+    // Иначе используем bundled JRE17 из папки лаунчера (скачан при установке)
+    let javaPath;
+    if (CFG.JAVA_PATH && CFG.JAVA_PATH !== 'java') {
+      javaPath = CFG.JAVA_PATH;
+    } else {
+      const bundled = require('path').join(LAUNCHER_DIR, 'jre17', 'bin',
+        process.platform === 'win32' ? 'java.exe' : 'java');
+      javaPath = fs.existsSync(bundled) ? bundled : installer.findJava(LAUNCHER_DIR);
+    }
     const sep      = process.platform === 'win32' ? ';' : ':';
 
     // Проверяем что java существует
@@ -238,8 +249,49 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       return { ok: false, error: `Отсутствуют файлы classpath (${missing.length} шт). Переустанови клиент.` };
     }
 
+    // Проверяем целостность jar'ов в папке mods/ — ZipException если повреждён
+    const modsDir = path.join(launch.gameDir, 'mods');
+    if (fs.existsSync(modsDir)) {
+      const badMods = [];
+      for (const f of fs.readdirSync(modsDir)) {
+        if (!f.endsWith('.jar')) continue;
+        const fpath = path.join(modsDir, f);
+        try {
+          const buf = fs.readFileSync(fpath);
+          // ZIP должен заканчиваться на сигнатуру END 0x06054b50
+          // Ищем её в последних 64KB файла
+          const tail = buf.slice(Math.max(0, buf.length - 65536));
+          let found = false;
+          for (let i = tail.length - 4; i >= 0; i--) {
+            if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 0x05 && tail[i+3] === 0x06) {
+              found = true; break;
+            }
+          }
+          if (!found) badMods.push(f);
+        } catch { badMods.push(f); }
+      }
+      if (badMods.length > 0) {
+        // Удаляем повреждённые файлы чтобы при следующем запуске лаунчер их перекачал
+        for (const f of badMods) {
+          try { fs.unlinkSync(path.join(modsDir, f)); } catch {}
+        }
+        // Сбрасываем версию модов чтобы триггернуть перекачку
+        const store = loadStore();
+        delete store.modsVersion;
+        saveStore(store);
+        return { ok: false, error: `Повреждены моды (${badMods.length} шт): ${badMods.slice(0, 3).join(', ')}...
+Файлы удалены — перезапусти лаунчер для перекачки.` };
+      }
+    }
+
     const logPath = path.join(LAUNCHER_DIR, 'minecraft.log');
     const logFile = fs.openSync(logPath, 'w');
+
+    // JVM аргументы — Forge сам прописывает -p, -DlegacyClassPath и --add-modules в version.json
+    const forgeJvmArgs = launch.forgeJvmArgs || [];
+
+    // module-path из launch.json (извлечён из forge version.json при установке)
+    const modulePath = (launch.modulePath || []).join(sep);
 
     const args = [
       `-Xmx${CFG.RAM_MAX}`,
@@ -247,9 +299,20 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       `-Djava.library.path=${launch.nativesDir}`,
       `-Dminecraft.launcher.brand=mc-launcher`,
       `-Dminecraft.launcher.version=1.0`,
-      // Forge 47.x требует эти флаги
+      // Отключаем ранний экран Forge — он требует особой настройки окна
+      '-Dfml.earlyprogresswindow=false',
+      // Открытия модулей для Forge 47.x
       '--add-opens', 'java.base/java.util.jar=ALL-UNNAMED',
       '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+      '--add-opens', 'java.desktop/sun.awt.image=ALL-UNNAMED',
+      '--add-opens', 'java.base/sun.security.util=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.net=ALL-UNNAMED',
+      // module-path — securejarhandler, bootstraplauncher и др.
+      ...(modulePath ? ['-p', modulePath] : []),
+      ...(modulePath ? ['--add-modules', 'ALL-MODULE-PATH'] : []),
+      // JVM args от Forge (-DlegacyClassPath, -DlibraryDirectory и т.д.)
+      ...forgeJvmArgs,
       '-cp', launch.classpath.join(sep),
       launch.mainClass,
       '--username',    nickname || CFG.DEFAULT_USERNAME,
@@ -290,6 +353,26 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
     child.unref();
     return { ok: true, logPath };
   } catch (e) { return { ok: false, error: e.message }; }
+});
+
+
+// ─── SERVER PING ─────────────────────────────────────────────────────────────
+const net = require('net');
+ipcMain.handle('server-ping', async () => {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const start  = Date.now();
+    socket.setTimeout(3000);
+
+    socket.connect(CFG.SERVER_PORT, CFG.SERVER_IP, () => {
+      const ping = Date.now() - start;
+      socket.destroy();
+      resolve({ online: true, ping });
+    });
+
+    socket.on('error', () => { socket.destroy(); resolve({ online: false }); });
+    socket.on('timeout', () => { socket.destroy(); resolve({ online: false }); });
+  });
 });
 
 // ─── HTTP UTILS ──────────────────────────────────────────────────────────────

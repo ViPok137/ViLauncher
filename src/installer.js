@@ -29,6 +29,11 @@ const FORGE_URL     = `https://maven.minecraftforge.net/net/minecraftforge/forge
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const RESOURCES_BASE  = 'https://resources.download.minecraft.net';
 
+// Java 17 Temurin от Adoptium — автоматическая установка если нет Java 17
+const JAVA17_WIN_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jre/hotspot/normal/eclipse?project=jdk';
+const JAVA17_LIN_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jre/hotspot/normal/eclipse?project=jdk';
+const JAVA17_MAC_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/mac/x64/jre/hotspot/normal/eclipse?project=jdk';
+
 // ─── ГЛАВНАЯ ФУНКЦИЯ ─────────────────────────────────────────────────────────
 async function install(clientDir, onProgress = () => {}) {
   const dirs = {
@@ -41,6 +46,10 @@ async function install(clientDir, onProgress = () => {}) {
     versions:  path.join(clientDir, 'versions'),
   };
   Object.values(dirs).forEach(d => fs.mkdirSync(d, { recursive: true }));
+
+  // 0. Проверяем Java 17 — скачиваем если нужно
+  const launcherDir = path.dirname(clientDir);
+  const javaExe = await ensureJava17(launcherDir, onProgress);
 
   // 1. Манифест Mojang
   onProgress('manifest', 0, 1, 'Получаю манифест Mojang...');
@@ -84,13 +93,19 @@ async function install(clientDir, onProgress = () => {}) {
   onProgress('assets', 0, assetObjects.length, 'Загружаю ресурсы...');
   let assetsDone = 0;
 
-  for (let i = 0; i < assetObjects.length; i += 10) {
-    const batch = assetObjects.slice(i, i + 10);
+  // Создаём все нужные папки заранее — избегаем гонки при параллельном скачивании
+  const prefixSet = new Set(assetObjects.map(([, obj]) => obj.hash.slice(0, 2)));
+  for (const prefix of prefixSet) {
+    fs.mkdirSync(path.join(dirs.objects, prefix), { recursive: true });
+  }
+
+  // Скачиваем батчами по 5 (не 10) — меньше вероятность конфликтов
+  for (let i = 0; i < assetObjects.length; i += 5) {
+    const batch = assetObjects.slice(i, i + 5);
     await Promise.all(batch.map(async ([, obj]) => {
-      const prefix  = obj.hash.slice(0, 2);
-      const dest    = path.join(dirs.objects, prefix, obj.hash);
+      const prefix = obj.hash.slice(0, 2);
+      const dest   = path.join(dirs.objects, prefix, obj.hash);
       if (!checkSha1(dest, obj.hash)) {
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
         await dlFile(`${RESOURCES_BASE}/${prefix}/${obj.hash}`, dest);
       }
     }));
@@ -108,8 +123,7 @@ async function install(clientDir, onProgress = () => {}) {
   onProgress('forge', 1, 3, 'Ищу Java 17 для Forge installer...');
 
   // Forge 47.x требует СТРОГО Java 17
-  const launcherDir = path.dirname(clientDir);
-  const javaExe = findJava(launcherDir);
+  // javaExe уже проверен/установлен на шаге 0 (ensureJava17)
   const javaVer = getJavaVersion(javaExe);
 
   if (javaVer !== 0 && javaVer !== 17) {
@@ -200,30 +214,76 @@ async function install(clientDir, onProgress = () => {}) {
     fs.readFileSync(path.join(forgeVersionDir, `${forgeVersionId}.json`), 'utf8')
   );
 
-  // 7. Строим launch.json
-  // Forge 47.x использует "inheritsFrom": "1.20.1"
-  // Нужно объединить libraries из обоих json
+  // 7. Строим launch.json — читаем аргументы ПРЯМО из forge version.json
+  // Forge прописывает в arguments.jvm все нужные -p, -DlegacyClassPath и т.д.
+  const sep = process.platform === 'win32' ? ';' : ':';
+
   const allLibs = [
-    ...(vanillaJson.libraries || []),
+    ...(vanillaJson.libraries     || []),
     ...(forgeVersionJson.libraries || []),
   ];
 
-  const classpath = buildClasspath(allLibs, dirs.libraries, dirs.versions, clientDir);
+  // Vanilla classpath (библиотеки ванилла + client.jar)
+  const vanillaClasspath = buildClasspath(vanillaJson.libraries || [], dirs.libraries, dirs.versions, clientDir);
+  if (!vanillaClasspath.includes(clientJar) && fs.existsSync(clientJar)) {
+    vanillaClasspath.push(clientJar);
+  }
 
-  // Forge кладёт свои jar в libraries/net/minecraftforge/forge/
-  // client.jar от vanilla тоже должен быть в classpath
-  if (!classpath.includes(clientJar) && fs.existsSync(clientJar)) {
-    classpath.push(clientJar);
+  // Forge JVM args с подстановкой переменных — там живут -p и -DlegacyClassPath
+  const rawForgeJvmArgs = extractForgeJvmArgs(forgeVersionJson, dirs.libraries, clientDir);
+
+  // Из forge JVM args вытаскиваем -p (module-path) — Forge сам его прописывает
+  // Формат: ["-p", "path1;path2;..."] или ["--module-path", "path1;path2;..."]
+  let modulePath = [];
+  let legacyClassPath = [];
+  const otherJvmArgs = [];
+
+  for (let i = 0; i < rawForgeJvmArgs.length; i++) {
+    const arg = rawForgeJvmArgs[i];
+    if ((arg === '-p' || arg === '--module-path') && i + 1 < rawForgeJvmArgs.length) {
+      modulePath = rawForgeJvmArgs[i + 1].split(sep).filter(Boolean);
+      i++; // пропускаем следующий аргумент
+    } else if (arg.startsWith('-DlegacyClassPath=')) {
+      legacyClassPath = arg.replace('-DlegacyClassPath=', '').split(sep).filter(Boolean);
+      otherJvmArgs.push(arg); // оставляем как есть — Forge его читает сам
+    } else {
+      otherJvmArgs.push(arg);
+    }
+  }
+
+  // Если Forge не прописал -p явно — строим modulePath сами
+  if (modulePath.length === 0) {
+    modulePath = buildModulePath(dirs.libraries);
+  }
+
+  // Финальный classpath: если есть legacyClassPath от Forge — используем его,
+  // иначе берём vanilla + forge libraries
+  let classpath;
+  if (legacyClassPath.length > 0) {
+    // legacyClassPath от Forge уже содержит все нужные jar'ы
+    classpath = legacyClassPath;
+    // Добавляем client.jar если его нет
+    if (!classpath.includes(clientJar) && fs.existsSync(clientJar)) {
+      classpath.push(clientJar);
+    }
+  } else {
+    classpath = buildClasspath(allLibs, dirs.libraries, dirs.versions, clientDir);
+    if (!classpath.includes(clientJar) && fs.existsSync(clientJar)) {
+      classpath.push(clientJar);
+    }
   }
 
   const launchData = {
-    mainClass:  forgeVersionJson.mainClass || vanillaJson.mainClass,
+    mainClass:    forgeVersionJson.mainClass || vanillaJson.mainClass,
     classpath,
-    assetsDir:  dirs.assets,
-    assetIndex: vanillaJson.assetIndex.id,
-    nativesDir: dirs.natives,
-    gameDir:    clientDir,
+    modulePath,
+    forgeJvmArgs: otherJvmArgs,
+    assetsDir:    dirs.assets,
+    assetIndex:   vanillaJson.assetIndex.id,
+    nativesDir:   dirs.natives,
+    gameDir:      clientDir,
     forgeVersionId,
+    librariesDir: dirs.libraries,
   };
 
   fs.writeFileSync(path.join(clientDir, 'launch.json'), JSON.stringify(launchData, null, 2));
@@ -261,6 +321,115 @@ function buildClasspath(libs, libsDir, versionsDir, clientDir) {
   if (forgeJar) entries.add(forgeJar);
 
   return Array.from(entries);
+}
+
+// ─── MODULE PATH (для Forge 47.x bootstraplauncher) ─────────────────────────
+// Forge 47.x использует Java Module System.
+// Модульные jar: securejarhandler, bootstraplauncher, eventbus, modlauncher и др.
+// Их нужно передать через -p (--module-path), а НЕ через -cp
+const MODULE_GROUPS = [
+  'cpw/mods',                    // bootstraplauncher, securejarhandler (старое место)
+  'net/minecraftforge/securejarhandler',  // securejarhandler (новое место)
+  'net/minecraftforge/modlauncher',
+  'net/minecraftforge/eventbus',
+  'net/minecraftforge/forgespi',
+  'net/minecraftforge/unsafe',
+  'net/minecraftforge/mergetool',
+  'org/spongepowered/mixin',
+  'net/sf/jopt-simple',
+  'org/ow2/asm',
+  'net/jodah/typetools',
+  'net/minecrell/terminalconsoleappender',
+  'com/github/ben-manes/caffeine',
+];
+
+function buildModulePath(libsDir) {
+  const seen    = new Set();
+  const modJars = [];
+
+  for (const group of MODULE_GROUPS) {
+    const groupDir = path.join(libsDir, group);
+    if (!fs.existsSync(groupDir)) continue;
+    collectJars(groupDir, seen, modJars);
+  }
+
+  // Дополнительно: прямой поиск по имени файла если не нашли через группы
+  const mustHave = ['securejarhandler', 'bootstraplauncher'];
+  for (const name of mustHave) {
+    if (!modJars.some(j => j.includes(name))) {
+      // Ищем рекурсивно по всему libsDir
+      const found = findJarByName(libsDir, name);
+      if (found) {
+        found.filter(j => !seen.has(j)).forEach(j => { seen.add(j); modJars.push(j); });
+      }
+    }
+  }
+
+  return modJars;
+}
+
+function collectJars(dir, seen, result) {
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      try {
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+          collectJars(full, seen, result);
+        } else if (
+          entry.endsWith('.jar') &&
+          !entry.endsWith('-sources.jar') &&
+          !entry.endsWith('-javadoc.jar') &&
+          !seen.has(full)
+        ) {
+          seen.add(full);
+          result.push(full);
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+function findJarByName(rootDir, namePart, _depth = 0) {
+  if (_depth > 8) return [];
+  const found = [];
+  try {
+    for (const entry of fs.readdirSync(rootDir)) {
+      const full = path.join(rootDir, entry);
+      try {
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+          found.push(...findJarByName(full, namePart, _depth + 1));
+        } else if (entry.includes(namePart) && entry.endsWith('.jar') && !entry.endsWith('-sources.jar')) {
+          found.push(full);
+        }
+      } catch {}
+    }
+  } catch {}
+  return found;
+}
+
+// Извлекаем JVM-аргументы из forge version.json
+// Forge прописывает туда -DlegacyClassPath, -DlibraryDirectory, --add-modules и др.
+function extractForgeJvmArgs(forgeJson, libsDir, clientDir) {
+  const args    = [];
+  const sep     = process.platform === 'win32' ? ';' : ':';
+  const jvmArgs = forgeJson.arguments?.jvm || [];
+
+  for (const arg of jvmArgs) {
+    if (typeof arg !== 'string') continue;
+    const resolved = arg
+      .replace(/\$\{library_directory\}/g,    libsDir)
+      .replace(/\$\{libraries_directory\}/g,  libsDir)
+      .replace(/\$\{classpath_separator\}/g,  sep)
+      .replace(/\$\{version_name\}/g,         MC_VERSION)
+      .replace(/\$\{game_directory\}/g,       clientDir)
+      .replace(/\$\{assets_root\}/g,          path.join(clientDir, 'assets'))
+      .replace(/\$\{natives_directory\}/g,    path.join(clientDir, 'natives'));
+    args.push(resolved);
+  }
+
+  return args;
 }
 
 // "net.minecraftforge:forge:1.20.1-47.3.0:universal"
@@ -381,6 +550,163 @@ function parseZip(buf) {
     i = dataStart + compSize;
   }
   return entries;
+}
+
+// ─── JAVA AUTO-INSTALL ───────────────────────────────────────────────────────
+// Если Java 17 не найдена — скачиваем Temurin 17 JRE прямо в папку лаунчера
+async function ensureJava17(launcherDir, onProgress) {
+  // Сначала проверяем есть ли уже bundled JRE
+  const bundledJava = path.join(launcherDir, 'jre17', 'bin',
+    process.platform === 'win32' ? 'java.exe' : 'java');
+  if (fs.existsSync(bundledJava)) return bundledJava;
+
+  // Пробуем найти системную Java 17
+  const systemJava = findJava(launcherDir);
+  const ver = getJavaVersion(systemJava);
+  if (ver === 17) return systemJava;
+
+  // Java 17 не найдена — скачиваем автоматически
+  onProgress('java', 0, 1, 'Java 17 не найдена, скачиваю автоматически (~45 МБ)...');
+
+  const jre17Dir = path.join(launcherDir, 'jre17');
+  const tmpArchive = path.join(launcherDir, 'jre17.tmp');
+
+  // Выбираем URL в зависимости от ОС
+  let dlUrl;
+  if (process.platform === 'win32')        dlUrl = JAVA17_WIN_URL;
+  else if (process.platform === 'darwin')  dlUrl = JAVA17_MAC_URL;
+  else                                     dlUrl = JAVA17_LIN_URL;
+
+  // Adoptium API возвращает redirect — скачиваем с прогрессом
+  try {
+    await dlFileProgress(dlUrl, tmpArchive, (done, total) => {
+      const pct = total > 0 ? Math.round(done / total * 100) : 0;
+      onProgress('java', pct, 100, `Скачиваю Java 17 JRE: ${pct}%`);
+    });
+  } catch (e) {
+    // Если Adoptium API недоступен — пробуем прямую ссылку
+    onProgress('java', 0, 1, 'Пробую альтернативный источник Java 17...');
+    const fallbackUrl = process.platform === 'win32'
+      ? 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_windows_hotspot_17.0.12_7.zip'
+      : 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.12_7.tar.gz';
+    await dlFileProgress(fallbackUrl, tmpArchive, (done, total) => {
+      const pct = total > 0 ? Math.round(done / total * 100) : 0;
+      onProgress('java', pct, 100, `Java 17 JRE: ${pct}%`);
+    });
+  }
+
+  onProgress('java', 99, 100, 'Распаковываю Java 17...');
+  fs.mkdirSync(jre17Dir, { recursive: true });
+
+  // Распаковываем архив
+  if (process.platform === 'win32') {
+    // ZIP
+    await extractZipToDir(tmpArchive, jre17Dir);
+  } else {
+    // tar.gz — используем системный tar
+    const tarResult = spawnSync('tar', ['xzf', tmpArchive, '-C', jre17Dir, '--strip-components=1'], {
+      stdio: 'pipe', timeout: 60000,
+    });
+    if (tarResult.status !== 0) throw new Error('Ошибка распаковки Java: ' + (tarResult.stderr || '').toString().slice(0, 200));
+  }
+
+  // Удаляем архив
+  try { fs.unlinkSync(tmpArchive); } catch {}
+
+  // Ищем java.exe внутри распакованной папки
+  const javaExe = findBundledJava(jre17Dir);
+  if (!javaExe) throw new Error('Java 17 распакована но java.exe не найден в ' + jre17Dir);
+
+  onProgress('java', 100, 100, 'Java 17 установлена успешно');
+  return javaExe;
+}
+
+// Ищем java.exe/java внутри распакованной папки JRE
+function findBundledJava(dir, depth = 0) {
+  if (depth > 4) return null;
+  const target = process.platform === 'win32' ? 'java.exe' : 'java';
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      try {
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+          const found = findBundledJava(full, depth + 1);
+          if (found) return found;
+        } else if (entry === target) {
+          if (process.platform !== 'win32') {
+            try { fs.chmodSync(full, '755'); } catch {}
+          }
+          return full;
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+// Распаковка ZIP для Windows (JRE архив)
+function extractZipToDir(zipPath, destDir) {
+  return new Promise((resolve, reject) => {
+    try {
+      const data    = fs.readFileSync(zipPath);
+      const entries = parseZip(data);
+      let extracted = 0;
+
+      // Находим общий prefix (первый компонент пути у всех файлов)
+      const prefix = entries[0]?.name?.split('/')[0] + '/';
+
+      for (const entry of entries) {
+        if (entry.isDir) continue;
+        // Убираем первый компонент пути (папка типа jdk-17.0.12+7-jre/)
+        const relPath = entry.name.startsWith(prefix)
+          ? entry.name.slice(prefix.length)
+          : entry.name;
+        if (!relPath) continue;
+
+        const dest = path.join(destDir, relPath.replace(/\//g, path.sep));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        try {
+          const raw = entry.compression === 8
+            ? zlib.inflateRawSync(entry.data)
+            : entry.data;
+          fs.writeFileSync(dest, raw);
+          extracted++;
+        } catch {}
+      }
+      resolve(extracted);
+    } catch (e) { reject(e); }
+  });
+}
+
+// dlFileProgress — нужна для скачивания JRE с прогрессом
+function dlFileProgress(url, dest, onProgress, retries = 3) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const tmp = dest + '.tmp2';
+    fs.mkdirSync(path.dirname(tmp), { recursive: true });
+    const file = fs.createWriteStream(tmp);
+    mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close(); fs.unlink(tmp, () => {});
+        return dlFileProgress(res.headers.location, dest, onProgress, retries).then(resolve).catch(reject);
+      }
+      if (res.statusCode >= 400) {
+        file.close(); fs.unlink(tmp, () => {});
+        if (retries > 0) return setTimeout(() => dlFileProgress(url, dest, onProgress, retries - 1).then(resolve).catch(reject), 1000);
+        return reject(new Error('HTTP ' + res.statusCode + ': ' + url));
+      }
+      const total = parseInt(res.headers['content-length'] || '0', 10);
+      let done = 0;
+      res.on('data', chunk => { done += chunk.length; onProgress(done, total); file.write(chunk); });
+      res.on('end', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
+      res.on('error', e => { file.close(); fs.unlink(tmp, () => {}); reject(e); });
+    }).on('error', err => {
+      file.close(); fs.unlink(tmp, () => {});
+      if (retries > 0) return setTimeout(() => dlFileProgress(url, dest, onProgress, retries - 1).then(resolve).catch(reject), 1000);
+      reject(err);
+    });
+  });
 }
 
 // ─── JAVA FINDER ─────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   // Установка Minecraft+Forge
   installCheck:  ()  => ipcRenderer.invoke('install-check'),
   installStart:  ()  => ipcRenderer.invoke('install-start'),
+  onJavaProg:    cb  => ipcRenderer.on('java-progress', (_, d) => cb(d)),
   onInstallProg: cb  => ipcRenderer.on('install-progress', (_, d) => cb(d)),
 
   // Моды
@@ -26,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   onModsStatus: cb => ipcRenderer.on('mods-status',   (_, d) => cb(d)),
 
   launch:      data => ipcRenderer.invoke('game-launch', data),
+  serverPing:  ()   => ipcRenderer.invoke('server-ping'),
   getAppInfo:  ()   => ipcRenderer.invoke('app-info'),
   onGameError: cb => ipcRenderer.on('game-error', (_, d) => cb(d)),
 });

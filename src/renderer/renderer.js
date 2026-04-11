@@ -69,6 +69,9 @@ function updatePlayBtn() {
   }
 
   checkLauncherUpdate();
+  fillSettings();
+  pingServer();      // проверяем статус сервера сразу
+  setInterval(pingServer, 30000); // и каждые 30 сек
 
   const { installed } = await api.installCheck();
   mcInstalled = installed;
@@ -284,6 +287,30 @@ $('btn-play').onclick = async () => {
   }
 };
 
+// ─── SERVER PING ─────────────────────────────────────────────────────────────
+async function pingServer() {
+  const dot = $('sv-dot');
+  const txt = $('sv-status-txt');
+  if (!dot || !txt) return;
+
+  try {
+    const r = await api.serverPing();
+    if (r.online) {
+      dot.className = 'sv-dot online';
+      txt.className = 'sv-status-txt online';
+      txt.textContent = `Онлайн · ${r.ping} мс`;
+    } else {
+      dot.className = 'sv-dot offline';
+      txt.className = 'sv-status-txt offline';
+      txt.textContent = 'Сервер недоступен';
+    }
+  } catch {
+    dot.className = 'sv-dot offline';
+    txt.className = 'sv-status-txt offline';
+    txt.textContent = 'Ошибка проверки';
+  }
+}
+
 // ─── NEWS ─────────────────────────────────────────────────────────────────────
 let newsLoaded = false;
 async function loadNews() {
@@ -310,9 +337,14 @@ function e(s) {
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 async function fillSettings() {
-  // Версия лаунчера
   const info = await api.getAppInfo();
-  if ($('s-lver'))  $('s-lver').textContent  = 'v' + (info.version || '1.0.0');
+  const ver  = 'v' + (info.version || '1.0.0');
+
+  // Версия в сайдбаре
+  if ($('ver-txt')) $('ver-txt').textContent = ver;
+
+  // Страница настроек
+  if ($('s-lver'))  $('s-lver').textContent  = ver;
   if ($('s-mver'))  $('s-mver').textContent  = info.modsVersion || 'Не установлены';
   if ($('s-elec'))  $('s-elec').textContent  = info.electron    || '—';
   if ($('s-os'))    $('s-os').textContent     = info.os          || '—';
