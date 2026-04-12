@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('api', {
 
   launch:      data => ipcRenderer.invoke('game-launch', data),
   serverPing:  ()   => ipcRenderer.invoke('server-ping'),
+  ramGet:      ()      => ipcRenderer.invoke('ram-get'),
+  ramSet:      data    => ipcRenderer.invoke('ram-set', data),
   getAppInfo:  ()   => ipcRenderer.invoke('app-info'),
   onGameError: cb => ipcRenderer.on('game-error', (_, d) => cb(d)),
 });

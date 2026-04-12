@@ -211,6 +211,41 @@
     .btn-install:hover{background:rgba(255,215,0,.16);box-shadow:0 0 20px rgba(255,215,0,.25)}
     .btn-install:disabled{opacity:.5;cursor:not-allowed}
 
+    /* RAM slider */
+    .ram-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+      padding:18px;margin-bottom:14px}
+    .ram-box-title{font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:2px;
+      color:var(--c);text-transform:uppercase;margin-bottom:14px;padding-bottom:9px;
+      border-bottom:1px solid var(--border)}
+    .ram-row{display:flex;align-items:center;justify-content:space-between;
+      gap:12px;margin-bottom:14px}
+    .ram-label{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);
+      white-space:nowrap}
+    .ram-val{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--c);
+      width:48px;text-align:right;flex-shrink:0}
+    .ram-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;
+      background:rgba(0,245,255,.12);border-radius:2px;outline:none;cursor:pointer}
+    .ram-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+      border-radius:50%;background:var(--c);box-shadow:var(--gc);cursor:pointer;
+      border:2px solid var(--d)}
+    .ram-slider:disabled{opacity:.4;cursor:not-allowed}
+    .ram-slider:disabled::-webkit-slider-thumb{background:var(--muted)}
+    .ram-info{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);
+      margin-bottom:12px}
+    .ram-btns{display:flex;gap:8px}
+    .btn-ram-auto{flex:1;padding:8px;border:1px solid var(--c);background:rgba(0,245,255,.08);
+      border-radius:6px;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;
+      letter-spacing:2px;color:var(--c);cursor:pointer;transition:all .2s}
+    .btn-ram-auto:hover{background:rgba(0,245,255,.16);box-shadow:var(--gc)}
+    .btn-ram-auto.active{background:rgba(0,245,255,.18);box-shadow:var(--gc)}
+    .btn-ram-save{flex:1;padding:8px;border:1px solid var(--ok);background:rgba(0,255,136,.08);
+      border-radius:6px;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;
+      letter-spacing:2px;color:var(--ok);cursor:pointer;transition:all .2s}
+    .btn-ram-save:hover{background:rgba(0,255,136,.16);box-shadow:0 0 14px rgba(0,255,136,.3)}
+    .ram-saved{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--ok);
+      margin-top:6px;display:none}
+    .ram-saved.show{display:block}
+
     /* nick error */
     .nick-err{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--p);
       margin-top:-10px;margin-bottom:10px;display:none;padding-left:2px}
@@ -345,6 +380,29 @@
       <div class="pg" id="pg-settings">
         <div class="pg-title">НАСТРОЙКИ</div>
         <div class="pg-sub">// Информация</div>
+        <!-- RAM настройка -->
+        <div class="ram-box">
+          <div class="ram-box-title">Выделяемая память</div>
+          <div class="ram-info" id="ram-info">Всего RAM: — ГБ</div>
+
+          <div class="ram-row">
+            <span class="ram-label">Макс (Xmx)</span>
+            <input class="ram-slider" id="ram-max-slider" type="range" min="1" max="16" step="1" value="4">
+            <span class="ram-val" id="ram-max-val">4 ГБ</span>
+          </div>
+          <div class="ram-row">
+            <span class="ram-label">Мин (Xms)</span>
+            <input class="ram-slider" id="ram-min-slider" type="range" min="1" max="8" step="1" value="2">
+            <span class="ram-val" id="ram-min-val">2 ГБ</span>
+          </div>
+
+          <div class="ram-btns">
+            <button class="btn-ram-auto" id="btn-ram-auto">⚡ АВТО</button>
+            <button class="btn-ram-save" id="btn-ram-save">✓ СОХРАНИТЬ</button>
+          </div>
+          <div class="ram-saved" id="ram-saved">✓ Сохранено — применится при следующем запуске</div>
+        </div>
+
         <div class="sg">
           <div class="sg-title">Лаунчер</div>
           <div class="sr"><span class="sl">Версия</span><span class="sv" id="s-lver">—</span></div>
@@ -360,6 +418,7 @@
           <div class="sr"><span class="sl">Electron</span><span class="sv" id="s-elec">—</span></div>
           <div class="sr"><span class="sl">ОС</span><span class="sv" id="s-os">—</span></div>
           <div class="sr"><span class="sl">Java</span><span class="sv" id="s-java" style="font-size:9px;word-break:break-all">—</span></div>
+          <div class="sr"><span class="sl">RAM (авто)</span><span class="sv" id="s-ram">—</span></div>
         </div>
       </div>
 

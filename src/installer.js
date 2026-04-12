@@ -251,7 +251,20 @@ async function install(clientDir, onProgress = () => {}) {
     }
   }
 
-  // Если Forge не прописал -p явно — строим modulePath сами
+  // ВСЕГДА объединяем -p из forge version.json с нашим buildModulePath.
+  // Forge не включает fmlearlydisplay в свой -p, но он нужен в module layer.
+  // buildModulePath находит все нужные jar'ы — берём объединение.
+  {
+    const fromForge = new Set(modulePath.map(p => path.basename(p).toLowerCase()));
+    const built     = buildModulePath(dirs.libraries);
+    for (const p of built) {
+      const base = path.basename(p).toLowerCase();
+      if (!fromForge.has(base) && fs.existsSync(p)) {
+        modulePath.push(p);
+        fromForge.add(base);
+      }
+    }
+  }
   if (modulePath.length === 0) {
     modulePath = buildModulePath(dirs.libraries);
   }
@@ -328,19 +341,32 @@ function buildClasspath(libs, libsDir, versionsDir, clientDir) {
 // Модульные jar: securejarhandler, bootstraplauncher, eventbus, modlauncher и др.
 // Их нужно передать через -p (--module-path), а НЕ через -cp
 const MODULE_GROUPS = [
-  'cpw/mods',                    // bootstraplauncher, securejarhandler (старое место)
-  'net/minecraftforge/securejarhandler',  // securejarhandler (новое место)
+  'cpw/mods',                              // bootstraplauncher, securejarhandler
+  'net/minecraftforge/securejarhandler',
+  'net/minecraftforge/fmlearlydisplay',    // ← обязательно для Forge 47.x
   'net/minecraftforge/modlauncher',
   'net/minecraftforge/eventbus',
   'net/minecraftforge/forgespi',
   'net/minecraftforge/unsafe',
   'net/minecraftforge/mergetool',
+  'net/minecraftforge/fmlloader',
+  'net/minecraftforge/coremods',
+  'net/minecraftforge/accesstransformers',
   'org/spongepowered/mixin',
   'net/sf/jopt-simple',
   'org/ow2/asm',
   'net/jodah/typetools',
   'net/minecrell/terminalconsoleappender',
   'com/github/ben-manes/caffeine',
+  'org/apache/logging/log4j',              // ← log4j нужен как модуль
+  'org/apache/maven',
+  'org/antlr',
+  'org/jline',
+  'org/openjdk/nashorn',
+  'com/electronwill/night-config',
+  'net/minecraftforge/JarJarFileSystems',
+  'net/minecraftforge/JarJarSelector',
+  'net/minecraftforge/JarJarMetadata',
 ];
 
 function buildModulePath(libsDir) {
@@ -354,7 +380,7 @@ function buildModulePath(libsDir) {
   }
 
   // Дополнительно: прямой поиск по имени файла если не нашли через группы
-  const mustHave = ['securejarhandler', 'bootstraplauncher'];
+  const mustHave = ['securejarhandler', 'bootstraplauncher', 'fmlearlydisplay'];
   for (const name of mustHave) {
     if (!modJars.some(j => j.includes(name))) {
       // Ищем рекурсивно по всему libsDir

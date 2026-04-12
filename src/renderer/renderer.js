@@ -298,7 +298,12 @@ async function pingServer() {
     if (r.online) {
       dot.className = 'sv-dot online';
       txt.className = 'sv-status-txt online';
-      txt.textContent = `Онлайн · ${r.ping} мс`;
+      // Показываем игроков если сервер их вернул
+      if (r.online_count !== undefined) {
+        txt.textContent = `Онлайн · ${r.online_count}/${r.max_count} · ${r.ping} мс`;
+      } else {
+        txt.textContent = `Онлайн · ${r.ping} мс`;
+      }
     } else {
       dot.className = 'sv-dot offline';
       txt.className = 'sv-status-txt offline';
@@ -340,13 +345,106 @@ async function fillSettings() {
   const info = await api.getAppInfo();
   const ver  = 'v' + (info.version || '1.0.0');
 
-  // Версия в сайдбаре
   if ($('ver-txt')) $('ver-txt').textContent = ver;
-
-  // Страница настроек
   if ($('s-lver'))  $('s-lver').textContent  = ver;
   if ($('s-mver'))  $('s-mver').textContent  = info.modsVersion || 'Не установлены';
   if ($('s-elec'))  $('s-elec').textContent  = info.electron    || '—';
   if ($('s-os'))    $('s-os').textContent     = info.os          || '—';
   if ($('s-java'))  $('s-java').textContent   = info.java        || '—';
+  if ($('s-ram'))   $('s-ram').textContent    = info.ram         || '—';
+
+  // Загружаем настройки RAM
+  await loadRamSettings();
+}
+
+// ─── RAM SETTINGS UI ─────────────────────────────────────────────────────────
+let ramData = null;
+
+async function loadRamSettings() {
+  ramData = await api.ramGet();
+  if (!ramData) return;
+
+  const maxSlider = $('ram-max-slider');
+  const minSlider = $('ram-min-slider');
+  const maxVal    = $('ram-max-val');
+  const minVal    = $('ram-min-val');
+  const info      = $('ram-info');
+  const autoBtn   = $('btn-ram-auto');
+
+  if (!maxSlider) return;
+
+  // Ограничиваем максимум слайдера по RAM системы
+  const sysMax = Math.min(Math.floor(ramData.totalGb * 0.75), 32);
+  maxSlider.max = sysMax;
+  minSlider.max = Math.min(sysMax - 1, 8);
+
+  info.textContent = `Всего RAM: ${ramData.totalGb} ГБ · Рекомендуется: ${ramData.autoMin}–${ramData.autoMax} ГБ`;
+
+  // Устанавливаем текущие значения
+  const isAuto = ramData.currentMax === 'auto';
+  if (isAuto) {
+    maxSlider.value = ramData.autoMax;
+    minSlider.value = ramData.autoMin;
+    autoBtn.classList.add('active');
+    maxSlider.disabled = true;
+    minSlider.disabled = true;
+  } else {
+    maxSlider.value = parseInt(ramData.currentMax) || ramData.autoMax;
+    minSlider.value = parseInt(ramData.currentMin) || ramData.autoMin;
+    autoBtn.classList.remove('active');
+    maxSlider.disabled = false;
+    minSlider.disabled = false;
+  }
+  maxVal.textContent = maxSlider.value + ' ГБ';
+  minVal.textContent = minSlider.value + ' ГБ';
+
+  // Слайдеры
+  maxSlider.oninput = () => {
+    if (parseInt(maxSlider.value) <= parseInt(minSlider.value)) {
+      minSlider.value = Math.max(1, parseInt(maxSlider.value) - 1);
+      minVal.textContent = minSlider.value + ' ГБ';
+    }
+    maxVal.textContent = maxSlider.value + ' ГБ';
+    autoBtn.classList.remove('active');
+  };
+  minSlider.oninput = () => {
+    if (parseInt(minSlider.value) >= parseInt(maxSlider.value)) {
+      maxSlider.value = Math.min(sysMax, parseInt(minSlider.value) + 1);
+      maxVal.textContent = maxSlider.value + ' ГБ';
+    }
+    minVal.textContent = minSlider.value + ' ГБ';
+    autoBtn.classList.remove('active');
+  };
+
+  // Кнопка Авто
+  $('btn-ram-auto').onclick = async () => {
+    await api.ramSet({ maxG: 'auto', minG: 'auto' });
+    maxSlider.value   = ramData.autoMax;
+    minSlider.value   = ramData.autoMin;
+    maxVal.textContent = ramData.autoMax + ' ГБ';
+    minVal.textContent = ramData.autoMin + ' ГБ';
+    maxSlider.disabled = true;
+    minSlider.disabled = true;
+    autoBtn.classList.add('active');
+    showRamSaved();
+  };
+
+  // Кнопка Сохранить
+  $('btn-ram-save').onclick = async () => {
+    await api.ramSet({
+      maxG: maxSlider.value,
+      minG: minSlider.value,
+    });
+    maxSlider.disabled = false;
+    minSlider.disabled = false;
+    autoBtn.classList.remove('active');
+    showRamSaved();
+  };
+}
+
+function showRamSaved() {
+  const el = $('ram-saved');
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
 }

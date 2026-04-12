@@ -70,12 +70,16 @@ ipcMain.handle('app-info', () => {
   const javaLabel = fs.existsSync(bundled)
     ? 'Bundled JRE 17 (авто)'
     : javaPath;
+  const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(1);
+  const ramArgs  = autoRam();
+  const xmx = ramArgs.find(a => a.startsWith('-Xmx')) || '';
   return {
     version:     app.getVersion(),
     modsVersion: store.modsVersion || null,
     electron:    process.versions.electron,
     os:          process.platform === 'win32' ? 'Windows' : process.platform,
     java:        javaLabel,
+    ram:         `${xmx.replace('-Xmx','')} / ${totalRam} ГБ всего`,
   };
 });
 
@@ -139,6 +143,8 @@ ipcMain.handle('install-check', () => {
 ipcMain.handle('install-start', async () => {
   try {
     fs.mkdirSync(CLIENT_DIR, { recursive: true });
+    // Всегда удаляем старый launch.json чтобы он пересоздался с актуальным modulePath
+    try { fs.unlinkSync(LAUNCH_JSON); } catch {}
 
     await installer.install(CLIENT_DIR, (phase, done, total, name) => {
       const phaseNames = {
@@ -294,13 +300,16 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
     const modulePath = (launch.modulePath || []).join(sep);
 
     const args = [
-      `-Xmx${CFG.RAM_MAX}`,
-      `-Xms${CFG.RAM_MIN}`,
+      // Автоматическое выделение памяти на основе RAM системы
+      ...autoRam(),
       `-Djava.library.path=${launch.nativesDir}`,
       `-Dminecraft.launcher.brand=mc-launcher`,
       `-Dminecraft.launcher.version=1.0`,
-      // Отключаем ранний экран Forge — он требует особой настройки окна
+      // Отключаем ранний экран Forge (и как system property, и как program arg ниже)
       '-Dfml.earlyprogresswindow=false',
+      // ignoreList — список jar'ов которые Forge НЕ должен открывать как модули
+      // Без этого Forge пытается загрузить client.jar как мод и падает
+      `-DignoreList=${path.basename(launch.classpath.find(p => p.includes(installer.MC_VERSION + '.jar')) || '')}`,
       // Открытия модулей для Forge 47.x
       '--add-opens', 'java.base/java.util.jar=ALL-UNNAMED',
       '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
@@ -324,9 +333,40 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       '--userType',    'legacy',
       '--server',      CFG.SERVER_IP,
       '--port',        String(CFG.SERVER_PORT),
+      // Отключаем ранний экран Forge через program arg (именно так проверяет Forge 47.x)
+      '--fml.earlyprogresswindow', 'false',
     ];
 
-    const child = spawn(javaPath, args, {
+    // Убираем null/undefined и дедуплицируем ПАРНЫЕ аргументы (флаг + значение)
+    // Важно: --add-modules ALL-MODULE-PATH — это пара, нельзя дедупить по отдельности
+    const rawArgs = args.filter(a => a !== undefined && a !== null && a !== '').map(String);
+    const cleanArgs = [];
+    const seenPairs = new Set(); // ключ = "флаг|значение"
+
+    for (let i = 0; i < rawArgs.length; i++) {
+      const a = rawArgs[i];
+      // Парные флаги без = : следующий аргумент — значение
+      const isPairedFlag = (a === '--add-modules' || a === '--add-opens' ||
+                            a === '--add-exports' || a === '--add-reads' ||
+                            a === '-p' || a === '--module-path');
+      if (isPairedFlag && i + 1 < rawArgs.length) {
+        const val = rawArgs[i + 1];
+        const key = a + '|' + val;
+        if (!seenPairs.has(key)) {
+          seenPairs.add(key);
+          cleanArgs.push(a, val);
+        }
+        i++; // пропускаем значение
+      } else {
+        cleanArgs.push(a);
+      }
+    }
+
+    // Логируем команду запуска для отладки
+    const cmdLog = path.join(LAUNCHER_DIR, 'launch-cmd.log');
+    try { fs.writeFileSync(cmdLog, javaPath + '\n' + cleanArgs.join('\n')); } catch {}
+
+    const child = spawn(javaPath, cleanArgs, {
       detached:    true,
       stdio:       ['ignore', logFile, logFile],
       cwd:         launch.gameDir,
@@ -356,24 +396,196 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
 });
 
 
-// ─── SERVER PING ─────────────────────────────────────────────────────────────
+// ─── SERVER PING (настоящий Minecraft Status Packet) ────────────────────────
+// Простой TCP-пинг не подходит — Playit держит порт открытым даже без сервера.
+// Используем настоящий Minecraft 1.7+ Status протокол.
 const net = require('net');
+
 ipcMain.handle('server-ping', async () => {
   return new Promise((resolve) => {
-    const socket = new net.Socket();
-    const start  = Date.now();
-    socket.setTimeout(3000);
+    const host    = CFG.SERVER_IP;
+    const port    = CFG.SERVER_PORT;
+    const timeout = 4000;
+    const socket  = new net.Socket();
+    let   resolved = false;
+    let   start;
 
-    socket.connect(CFG.SERVER_PORT, CFG.SERVER_IP, () => {
-      const ping = Date.now() - start;
+    function done(result) {
+      if (resolved) return;
+      resolved = true;
       socket.destroy();
-      resolve({ online: true, ping });
-    });
+      resolve(result);
+    }
 
-    socket.on('error', () => { socket.destroy(); resolve({ online: false }); });
-    socket.on('timeout', () => { socket.destroy(); resolve({ online: false }); });
+    socket.setTimeout(timeout);
+    socket.on('error',   () => done({ online: false }));
+    socket.on('timeout', () => done({ online: false }));
+
+    socket.connect(port, host, () => {
+      start = Date.now();
+
+      // ── Handshake packet (0x00) ────────────────────────────────────────────
+      // Пакет: PacketID=0x00, ProtocolVersion=47(varint), Host, Port, NextState=1
+      const hostBuf  = Buffer.from(host, 'utf8');
+      const hostLen  = hostBuf.length;
+
+      // Собираем тело Handshake
+      const handshakeBody = Buffer.concat([
+        encodeVarint(0x00),                   // Packet ID
+        encodeVarint(47),                      // Protocol version (1.8, достаточно для пинга)
+        encodeVarint(hostLen),                 // Host string length
+        hostBuf,                               // Host
+        Buffer.from([port >> 8, port & 0xFF]), // Port (2 bytes big-endian)
+        encodeVarint(1),                       // Next state: Status
+      ]);
+      socket.write(Buffer.concat([encodeVarint(handshakeBody.length), handshakeBody]));
+
+      // ── Status Request packet (0x00, length=1) ────────────────────────────
+      socket.write(Buffer.from([0x01, 0x00]));
+
+      // ── Читаем ответ ──────────────────────────────────────────────────────
+      let   buf  = Buffer.alloc(0);
+      socket.on('data', chunk => {
+        buf = Buffer.concat([buf, chunk]);
+
+        // Ждём хотя бы 5 байт (varint length + packet id + varint json len)
+        if (buf.length < 5) return;
+
+        try {
+          // Читаем длину пакета (varint)
+          const { value: pktLen, bytesRead: lenBytes } = readVarint(buf, 0);
+          if (buf.length < lenBytes + pktLen) return; // ещё не всё пришло
+
+          // Читаем packet id (varint)
+          const { value: pktId, bytesRead: idBytes } = readVarint(buf, lenBytes);
+          if (pktId !== 0x00) return; // не Status Response
+
+          // Читаем длину JSON строки (varint)
+          const { value: jsonLen, bytesRead: jsonLenBytes } = readVarint(buf, lenBytes + idBytes);
+          const jsonStart = lenBytes + idBytes + jsonLenBytes;
+
+          if (buf.length < jsonStart + jsonLen) return;
+
+          const jsonStr = buf.slice(jsonStart, jsonStart + jsonLen).toString('utf8');
+          const ping    = Date.now() - start;
+
+          try {
+            const status = JSON.parse(jsonStr);
+            const players = status.players || {};
+            done({
+              online:  true,
+              ping,
+              version: status.version?.name  || '',
+              online_count:  players.online  || 0,
+              max_count:     players.max     || 0,
+              motd:    status.description?.text || '',
+            });
+          } catch {
+            // JSON есть — сервер работает, просто не смогли распарсить
+            done({ online: true, ping });
+          }
+        } catch {
+          // Пакет ещё не полный — ждём
+        }
+      });
+    });
   });
 });
+
+// Вспомогательные функции для VarInt (Minecraft protocol)
+function encodeVarint(val) {
+  const bytes = [];
+  do {
+    let byte = val & 0x7F;
+    val >>>= 7;
+    if (val !== 0) byte |= 0x80;
+    bytes.push(byte);
+  } while (val !== 0);
+  return Buffer.from(bytes);
+}
+
+function readVarint(buf, offset) {
+  let value = 0, shift = 0, bytesRead = 0;
+  let byte;
+  do {
+    if (offset + bytesRead >= buf.length) throw new Error('Buffer too short');
+    byte = buf[offset + bytesRead];
+    value |= (byte & 0x7F) << shift;
+    shift += 7;
+    bytesRead++;
+  } while (byte & 0x80);
+  return { value, bytesRead };
+}
+
+
+// ─── RAM SETTINGS ────────────────────────────────────────────────────────────
+ipcMain.handle('ram-get', () => {
+  const store   = loadStore();
+  const totalGb = os.totalmem() / 1024 / 1024 / 1024;
+  let autoMin, autoMax;
+  if      (totalGb <= 8)  { autoMin = 2; autoMax = 3; }
+  else if (totalGb <= 16) { autoMin = 3; autoMax = Math.min(6, Math.floor(totalGb * 0.4)); }
+  else if (totalGb <= 32) { autoMin = 4; autoMax = Math.min(8, Math.floor(totalGb * 0.35)); }
+  else                    { autoMin = 4; autoMax = Math.min(10, Math.floor(totalGb * 0.3)); }
+  return {
+    totalGb:    Math.round(totalGb),
+    autoMax,
+    autoMin,
+    currentMax: store.ramMaxG || 'auto',
+    currentMin: store.ramMinG || 'auto',
+  };
+});
+
+ipcMain.handle('ram-set', (_, { maxG, minG }) => {
+  const store = loadStore();
+  store.ramMaxG = maxG;
+  store.ramMinG = minG;
+  saveStore(store);
+  return { ok: true };
+});
+
+// ─── AUTO RAM ────────────────────────────────────────────────────────────────
+function autoRam() {
+  const totalGb = os.totalmem() / 1024 / 1024 / 1024;
+  let minG, maxG;
+
+  // Автоматическое определение по RAM системы
+  if      (totalGb <= 8)  { minG = 2; maxG = 3; }
+  else if (totalGb <= 16) { minG = 3; maxG = Math.min(6, Math.floor(totalGb * 0.4)); }
+  else if (totalGb <= 32) { minG = 4; maxG = Math.min(8, Math.floor(totalGb * 0.35)); }
+  else                    { minG = 4; maxG = Math.min(10, Math.floor(totalGb * 0.3)); }
+
+  // Проверяем пользовательскую настройку из settings.json
+  const store = loadStore();
+  if (store.ramMaxG && store.ramMaxG !== 'auto') maxG = parseInt(store.ramMaxG) || maxG;
+  if (store.ramMinG && store.ramMinG !== 'auto') minG = parseInt(store.ramMinG) || minG;
+
+  // minG всегда < maxG
+  if (minG >= maxG) minG = Math.max(1, maxG - 1);
+
+  return [
+    `-Xms${minG}G`,
+    `-Xmx${maxG}G`,
+    // Оптимизированные GC флаги для Minecraft (Aikar's flags)
+    '-XX:+UseG1GC',
+    '-XX:+ParallelRefProcEnabled',
+    '-XX:MaxGCPauseMillis=200',
+    '-XX:+UnlockExperimentalVMOptions',
+    '-XX:+DisableExplicitGC',
+    '-XX:+AlwaysPreTouch',
+    '-XX:G1NewSizePercent=30',
+    '-XX:G1MaxNewSizePercent=40',
+    '-XX:G1HeapRegionSize=8M',
+    '-XX:G1ReservePercent=20',
+    '-XX:G1HeapWastePercent=5',
+    '-XX:G1MixedGCCountTarget=4',
+    '-XX:InitiatingHeapOccupancyPercent=15',
+    '-XX:G1MixedGCLiveThresholdPercent=90',
+    '-XX:SurvivorRatio=32',
+    '-XX:+PerfDisableSharedMem',
+    '-XX:MaxTenuringThreshold=1',
+  ];
+}
 
 // ─── HTTP UTILS ──────────────────────────────────────────────────────────────
 function fetchText(url, timeoutMs = 15000) {
