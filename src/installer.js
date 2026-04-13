@@ -36,9 +36,6 @@ const JAVA17_MAC_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/mac/x64
 
 // ─── ГЛАВНАЯ ФУНКЦИЯ ─────────────────────────────────────────────────────────
 async function install(clientDir, onProgress = () => {}) {
-  // Установляем системные свойства для Maven репозиториев
-  process.env.MAVEN_OPTS = '-Dhttp.maxRedirects=5 -Dfile.encoding=UTF-8';
-
   const dirs = {
     root:      clientDir,
     libraries: path.join(clientDir, 'libraries'),
@@ -49,7 +46,6 @@ async function install(clientDir, onProgress = () => {}) {
     versions:  path.join(clientDir, 'versions'),
   };
   Object.values(dirs).forEach(d => fs.mkdirSync(d, { recursive: true }));
-
 
   // 0. Проверяем Java 17 — скачиваем если нужно
   const launcherDir = path.dirname(clientDir);
@@ -67,14 +63,20 @@ async function install(clientDir, onProgress = () => {}) {
   fs.writeFileSync(path.join(vanillaDir, `${MC_VERSION}.json`), JSON.stringify(vanillaJson, null, 2));
   onProgress('manifest', 1, 1, 'Манифест получен');
 
-  // 2. client.jar
+  // 2. client.jar — всегда проверяем SHA1, при несовпадении скачиваем заново
   const clientJar  = path.join(vanillaDir, `${MC_VERSION}.jar`);
   const clientInfo = vanillaJson.downloads.client;
   if (!checkSha1(clientJar, clientInfo.sha1)) {
-    onProgress('client', 0, 1, 'Скачиваю client.jar...');
+    onProgress('client', 0, 1, 'Скачиваю client.jar (проверка SHA1)...');
+    // Удаляем повреждённый файл если есть
+    try { fs.unlinkSync(clientJar); } catch {}
     await dlFile(clientInfo.url, clientJar);
+    // Проверяем после скачивания
+    if (!checkSha1(clientJar, clientInfo.sha1)) {
+      throw new Error('client.jar скачался повреждённым (SHA1 не совпадает). Проверь интернет.');
+    }
   }
-  onProgress('client', 1, 1, 'client.jar готов');
+  onProgress('client', 1, 1, 'client.jar готов ✓');
 
   // 3. Libraries + natives
   const libs = (vanillaJson.libraries || []).filter(isLibAllowed);
@@ -177,11 +179,10 @@ async function install(clientDir, onProgress = () => {}) {
   const forgeLogPath = path.join(clientDir, 'forge-install.log');
   onProgress('forge', 1, 3, 'Запускаю Forge installer (Java ' + (javaVer || '?') + ', 2-3 мин)...');
 
-const forgeResult = spawnSync(javaExe, [
-  '-Dhttp.proxyHost=',  // очищаем прокси если есть
-  '-jar', forgeInstallerPath,
-  '--installClient', clientDir,
-], {
+  const forgeResult = spawnSync(javaExe, [
+    '-jar', forgeInstallerPath,
+    '--installClient', clientDir,
+  ], {
     cwd:         clientDir,
     stdio:       'pipe',
     timeout:     10 * 60 * 1000,
@@ -901,80 +902,21 @@ function dlFile(url, dest, retries = 3) {
     const tmp = dest + '.tmp';
     fs.mkdirSync(path.dirname(tmp), { recursive: true });
     const file = fs.createWriteStream(tmp);
-    
     mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        fs.unlink(tmp, () => {});
+        file.close(); fs.unlink(tmp, () => {});
         return dlFile(res.headers.location, dest, retries).then(resolve).catch(reject);
       }
       if (res.statusCode >= 400) {
-        file.close();
-        fs.unlink(tmp, () => {});
-        if (retries > 0) {
-          return setTimeout(
-            () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
-            1000
-          );
-        }
+        file.close(); fs.unlink(tmp, () => {});
+        if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
         return reject(new Error(`HTTP ${res.statusCode}: ${url}`));
       }
-      
       res.pipe(file);
-      file.on('finish', () => {
-        file.close(() => {
-          // ✅ Проверяем что это валидный ZIP/JAR после скачивания
-          try {
-            const buf = fs.readFileSync(tmp);
-            
-            // Если это JAR/ZIP — проверяем что содержит правильную сигнатуру
-            if (tmp.endsWith('.jar') || tmp.endsWith('.zip')) {
-              // ZIP должен начинаться с 0x04034b50 (PK..)
-              const sig = buf.readUInt32LE(0);
-              const isValidZip = (sig === 0x04034b50);
-              
-              if (!isValidZip) {
-                // Повреждённый JAR — пробуем снова
-                fs.unlink(tmp, () => {});
-                if (retries > 0) {
-                  return setTimeout(
-                    () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
-                    2000
-                  );
-                }
-                return reject(new Error(`Downloaded file corrupted (invalid ZIP signature): ${url}`));
-              }
-            }
-            
-            // Переименовываем в финальное имя
-            fs.rename(tmp, dest, (e) => {
-              if (e) {
-                reject(e);
-              } else {
-                resolve();
-              }
-            });
-          } catch (e) {
-            fs.unlink(tmp, () => {});
-            if (retries > 0) {
-              return setTimeout(
-                () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
-                2000
-              );
-            }
-            reject(e);
-          }
-        });
-      });
-    }).on('error', (err) => {
-      file.close();
-      fs.unlink(tmp, () => {});
-      if (retries > 0) {
-        return setTimeout(
-          () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
-          2000
-        );
-      }
+      file.on('finish', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
+    }).on('error', err => {
+      file.close(); fs.unlink(tmp, () => {});
+      if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
       reject(err);
     });
   });
@@ -982,18 +924,7 @@ function dlFile(url, dest, retries = 3) {
 
 function checkSha1(filePath, expected) {
   if (!fs.existsSync(filePath)) return false;
-  if (!expected) {
-    // Если SHA1 не передана, проверяем минимум что это валидный ZIP/JAR
-    try {
-      const buf = fs.readFileSync(filePath);
-      if (filePath.endsWith('.jar') || filePath.endsWith('.zip')) {
-        // ZIP должен начинаться с PK (..) — сигнатура 0x04034b50
-        const sig = buf.readUInt32LE(0);
-        return sig === 0x04034b50;
-      }
-      return true;
-    } catch { return false; }
-  }
+  if (!expected) return true;
   try {
     const hash = createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
     return hash === expected;

@@ -12,7 +12,10 @@ const CFG       = require('./config');
 const installer = require('./installer');
 
 // ─── PATHS ───────────────────────────────────────────────────────────────────
-const LAUNCHER_DIR = path.join(os.homedir(), '.mc-launcher');
+// На Windows используем %LOCALAPPDATA%\ViLauncher — не требует прав админа
+const LAUNCHER_DIR = process.platform === 'win32'
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'ViLauncher')
+  : path.join(os.homedir(), '.vilauncher');
 const CLIENT_DIR   = path.join(LAUNCHER_DIR, 'client');
 const STORE_PATH   = path.join(LAUNCHER_DIR, 'settings.json');
 const UPDATE_DIR   = path.join(LAUNCHER_DIR, 'update');
@@ -182,35 +185,6 @@ ipcMain.handle('install-start', async () => {
     // Всегда удаляем старый launch.json чтобы он пересоздался с актуальным modulePath
     try { fs.unlinkSync(LAUNCH_JSON); } catch {}
 
-    // ✅ ПРОВЕРКА ЦЕЛОСТНОСТИ МОДОВ ПЕРЕД УСТАНОВКОЙ
-    const modsDir = path.join(CLIENT_DIR, 'mods');
-    if (fs.existsSync(modsDir)) {
-      const badMods = [];
-      for (const f of fs.readdirSync(modsDir)) {
-        if (!f.endsWith('.jar')) continue;
-        const fpath = path.join(modsDir, f);
-        try {
-          const buf = fs.readFileSync(fpath);
-          const tail = buf.slice(Math.max(0, buf.length - 65536));
-          let found = false;
-          for (let i = tail.length - 4; i >= 0; i--) {
-            if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 0x05 && tail[i+3] === 0x06) {
-              found = true; break;
-            }
-          }
-          if (!found) badMods.push(f);
-        } catch { badMods.push(f); }
-      }
-      if (badMods.length > 0) {
-        for (const f of badMods) {
-          try { fs.unlinkSync(path.join(modsDir, f)); } catch {}
-        }
-        const store = loadStore();
-        delete store.modsVersion;
-        saveStore(store);
-      }
-    }
-
     await installer.install(CLIENT_DIR, (phase, done, total, name) => {
       const phaseNames = {
         manifest:  '📋 Манифест',
@@ -319,6 +293,25 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
     const missing = launch.classpath.filter(p => !fs.existsSync(p));
     if (missing.length > 0) {
       return { ok: false, error: `Отсутствуют файлы classpath (${missing.length} шт). Переустанови клиент.` };
+    }
+
+    // Проверяем целостность client.jar (1.20.1.jar) — частая причина ZipException
+    const clientJarPath = launch.classpath.find(p => p.endsWith('1.20.1.jar') && p.includes('versions'));
+    if (clientJarPath && fs.existsSync(clientJarPath)) {
+      const buf = fs.readFileSync(clientJarPath);
+      // ZIP должен заканчиваться на сигнатуру 0x06054b50
+      let zipOk = false;
+      for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65536); i--) {
+        if (buf[i] === 0x50 && buf[i+1] === 0x4b && buf[i+2] === 0x05 && buf[i+3] === 0x06) {
+          zipOk = true; break;
+        }
+      }
+      if (!zipOk) {
+        try { fs.unlinkSync(clientJarPath); } catch {}
+        // Удаляем launch.json чтобы форсировать переустановку
+        try { fs.unlinkSync(LAUNCH_JSON); } catch {}
+        return { ok: false, error: 'Файл 1.20.1.jar повреждён. Удалён автоматически — нажми Установить для переустановки.' };
+      }
     }
 
     // Проверяем целостность jar'ов в папке mods/ — ZipException если повреждён
