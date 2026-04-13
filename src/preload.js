@@ -28,6 +28,14 @@ contextBridge.exposeInMainWorld('api', {
 
   launch:      data => ipcRenderer.invoke('game-launch', data),
   serverPing:  ()   => ipcRenderer.invoke('server-ping'),
+  // Auth
+  authLogin:   data => ipcRenderer.invoke('auth-login', data),
+  authLogout:  ()   => ipcRenderer.invoke('auth-logout'),
+  authGetSaved:()   => ipcRenderer.invoke('auth-get-saved'),
+  authGetUser: ()   => ipcRenderer.invoke('auth-get-user'),
+  // Skin
+  skinGet:     u    => ipcRenderer.invoke('skin-get', u),
+  // RAM
   ramGet:      ()      => ipcRenderer.invoke('ram-get'),
   ramSet:      data    => ipcRenderer.invoke('ram-set', data),
   getAppInfo:  ()   => ipcRenderer.invoke('app-info'),

@@ -23,7 +23,7 @@ const { spawnSync } = require('child_process');
 const { createHash } = require('crypto');
 
 const MC_VERSION    = '1.20.1';
-const FORGE_VERSION = '1.20.1-47.3.0';
+const FORGE_VERSION = '1.20.1-47.4.16';
 const FORGE_JAR     = `forge-${FORGE_VERSION}-installer.jar`;
 const FORGE_URL     = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/${FORGE_JAR}`;
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
@@ -251,32 +251,29 @@ async function install(clientDir, onProgress = () => {}) {
     }
   }
 
-  // ВСЕГДА объединяем -p из forge version.json с нашим buildModulePath.
-  // Forge не включает fmlearlydisplay в свой -p, но он нужен в module layer.
-  // buildModulePath находит все нужные jar'ы — берём объединение.
-  {
-    const fromForge = new Set(modulePath.map(p => path.basename(p).toLowerCase()));
-    const built     = buildModulePath(dirs.libraries);
-    for (const p of built) {
-      const base = path.basename(p).toLowerCase();
-      if (!fromForge.has(base) && fs.existsSync(p)) {
-        modulePath.push(p);
-        fromForge.add(base);
-      }
-    }
-  }
+  // ВАЖНО: module-path берём ТОЛЬКО из forge version.json (-p аргумент).
+  // Forge задаёт ровно 8 jar'ов. Добавлять что-либо сверху нельзя —
+  // это ломает Java Module System (конфликты jopt.simple, joptsimple и др.)
+  // fmlearlydisplay, modlauncher и др. загружаются через legacyClassPath, НЕ через -p
   if (modulePath.length === 0) {
-    modulePath = buildModulePath(dirs.libraries);
+    // Fallback только если Forge совсем не прописал -p (не должно случиться)
+    modulePath = [
+      path.join(dirs.libraries, 'cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar'),
+      path.join(dirs.libraries, 'cpw/mods/securejarhandler/2.1.10/securejarhandler-2.1.10.jar'),
+    ].filter(p => fs.existsSync(p));
   }
 
-  // Финальный classpath: если есть legacyClassPath от Forge — используем его,
-  // иначе берём vanilla + forge libraries
+  // Финальный classpath
   let classpath;
+  const nativeSfx = getNativeSuffix();
   if (legacyClassPath.length > 0) {
-    // legacyClassPath от Forge уже содержит все нужные jar'ы
-    classpath = legacyClassPath;
-    // Добавляем client.jar если его нет
-    if (!classpath.includes(clientJar) && fs.existsSync(clientJar)) {
+    // Forge прописывает legacyClassPath — фильтруем natives по архитектуре
+    classpath = legacyClassPath.filter(p => {
+      const base = path.basename(p, '.jar');
+      if (!base.includes('natives-')) return true;
+      return base.endsWith(nativeSfx);
+    });
+    if (!classpath.some(p => p.includes(MC_VERSION + '.jar')) && fs.existsSync(clientJar)) {
       classpath.push(clientJar);
     }
   } else {
@@ -286,17 +283,23 @@ async function install(clientDir, onProgress = () => {}) {
     }
   }
 
+  // modulePath берётся только из forge version.json — дедупликация не нужна
+
+  // Извлекаем game args из forge version.json (--launchTarget forgeclient и др.)
+  const forgeGameArgs = extractForgeGameArgs(forgeVersionJson, clientDir, dirs);
+
   const launchData = {
-    mainClass:    forgeVersionJson.mainClass || vanillaJson.mainClass,
+    mainClass:     forgeVersionJson.mainClass || vanillaJson.mainClass,
     classpath,
     modulePath,
-    forgeJvmArgs: otherJvmArgs,
-    assetsDir:    dirs.assets,
-    assetIndex:   vanillaJson.assetIndex.id,
-    nativesDir:   dirs.natives,
-    gameDir:      clientDir,
+    forgeJvmArgs:  otherJvmArgs,
+    forgeGameArgs,                          // ← --launchTarget forgeclient и др.
+    assetsDir:     dirs.assets,
+    assetIndex:    vanillaJson.assetIndex.id,
+    nativesDir:    dirs.natives,
+    gameDir:       clientDir,
     forgeVersionId,
-    librariesDir: dirs.libraries,
+    librariesDir:  dirs.libraries,
   };
 
   fs.writeFileSync(path.join(clientDir, 'launch.json'), JSON.stringify(launchData, null, 2));
@@ -306,20 +309,54 @@ async function install(clientDir, onProgress = () => {}) {
 }
 
 // ─── CLASSPATH ────────────────────────────────────────────────────────────────
+// Определяем правильный суффикс нативных библиотек для текущей архитектуры
+function getNativeSuffix() {
+  const plat = process.platform;
+  const arch = os.arch(); // x64, arm64, ia32
+  if (plat === 'win32') {
+    if (arch === 'arm64') return 'natives-windows-arm64';
+    if (arch === 'ia32')  return 'natives-windows-x86';
+    return 'natives-windows'; // x64
+  }
+  if (plat === 'darwin') {
+    if (arch === 'arm64') return 'natives-macos-arm64';
+    return 'natives-macos';
+  }
+  if (arch === 'arm64') return 'natives-linux-arm64';
+  return 'natives-linux';
+}
+
 function buildClasspath(libs, libsDir, versionsDir, clientDir) {
-  const entries = new Set();
+  const entries     = new Set();
+  const nativeSufx  = getNativeSuffix(); // напр. "natives-windows"
 
   for (const lib of libs) {
     if (!isLibAllowed(lib)) continue;
 
-    // Способ 1: есть downloads.artifact с path
     if (lib.downloads?.artifact?.path) {
-      const p = path.join(libsDir, lib.downloads.artifact.path);
+      const artPath = lib.downloads.artifact.path;
+
+      // Фильтруем natives jar'ы — оставляем только нужную архитектуру
+      // Пример: lwjgl-3.3.1-natives-windows.jar — да
+      //          lwjgl-3.3.1-natives-windows-arm64.jar — нет (если мы x64)
+      if (artPath.includes('natives-')) {
+        const baseName = path.basename(artPath, '.jar'); // lwjgl-3.3.1-natives-windows-arm64
+        // Проверяем что это именно наш суффикс (точное совпадение конца имени)
+        if (!baseName.endsWith(nativeSufx)) continue;
+      }
+
+      const p = path.join(libsDir, artPath);
       if (fs.existsSync(p)) { entries.add(p); continue; }
     }
 
-    // Способ 2: maven-координаты из name (формат Forge)
+    // Maven-координаты (формат Forge)
     if (lib.name) {
+      // Фильтруем нативные по classifier
+      const parts = lib.name.split(':');
+      if (parts.length >= 4) {
+        const classifier = parts[3];
+        if (classifier && classifier.startsWith('natives-') && classifier !== nativeSufx) continue;
+      }
       const p = mavenToPath(lib.name, libsDir);
       if (p && fs.existsSync(p)) { entries.add(p); continue; }
     }
@@ -329,7 +366,7 @@ function buildClasspath(libs, libsDir, versionsDir, clientDir) {
   const clientJar = path.join(versionsDir, MC_VERSION, `${MC_VERSION}.jar`);
   if (fs.existsSync(clientJar)) entries.add(clientJar);
 
-  // forge-xxx-universal.jar / forge-xxx-client.jar
+  // forge-xxx-universal.jar
   const forgeJar = findForgeJar(clientDir);
   if (forgeJar) entries.add(forgeJar);
 
@@ -576,6 +613,29 @@ function parseZip(buf) {
     i = dataStart + compSize;
   }
   return entries;
+}
+
+
+// Извлекаем game-аргументы из forge version.json
+// Это --launchTarget forgeclient, --fml.forgeVersion и т.д.
+function extractForgeGameArgs(forgeJson, clientDir, dirs) {
+  const args     = [];
+  const gameArgs = forgeJson.arguments?.game || [];
+
+  for (const arg of gameArgs) {
+    if (typeof arg !== 'string') continue;
+    // Подставляем переменные
+    const resolved = arg
+      .replace(/\$\{game_directory\}/g,       clientDir)
+      .replace(/\$\{assets_root\}/g,           dirs.assets)
+      .replace(/\$\{assets_index_name\}/g,     'unknown') // будет перезаписано реальным значением
+      .replace(/\$\{version_name\}/g,          MC_VERSION)
+      .replace(/\$\{library_directory\}/g,     dirs.libraries)
+      .replace(/\$\{classpath_separator\}/g,   process.platform === 'win32' ? ';' : ':');
+    args.push(resolved);
+  }
+
+  return args;
 }
 
 // ─── JAVA AUTO-INSTALL ───────────────────────────────────────────────────────
@@ -836,21 +896,80 @@ function dlFile(url, dest, retries = 3) {
     const tmp = dest + '.tmp';
     fs.mkdirSync(path.dirname(tmp), { recursive: true });
     const file = fs.createWriteStream(tmp);
+    
     mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close(); fs.unlink(tmp, () => {});
+        file.close();
+        fs.unlink(tmp, () => {});
         return dlFile(res.headers.location, dest, retries).then(resolve).catch(reject);
       }
       if (res.statusCode >= 400) {
-        file.close(); fs.unlink(tmp, () => {});
-        if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
+        file.close();
+        fs.unlink(tmp, () => {});
+        if (retries > 0) {
+          return setTimeout(
+            () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+            1000
+          );
+        }
         return reject(new Error(`HTTP ${res.statusCode}: ${url}`));
       }
+      
       res.pipe(file);
-      file.on('finish', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
-    }).on('error', err => {
-      file.close(); fs.unlink(tmp, () => {});
-      if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
+      file.on('finish', () => {
+        file.close(() => {
+          // ✅ Проверяем что это валидный ZIP/JAR после скачивания
+          try {
+            const buf = fs.readFileSync(tmp);
+            
+            // Если это JAR/ZIP — проверяем что содержит правильную сигнатуру
+            if (tmp.endsWith('.jar') || tmp.endsWith('.zip')) {
+              // ZIP должен начинаться с 0x04034b50 (PK..)
+              const sig = buf.readUInt32LE(0);
+              const isValidZip = (sig === 0x04034b50);
+              
+              if (!isValidZip) {
+                // Повреждённый JAR — пробуем снова
+                fs.unlink(tmp, () => {});
+                if (retries > 0) {
+                  return setTimeout(
+                    () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+                    2000
+                  );
+                }
+                return reject(new Error(`Downloaded file corrupted (invalid ZIP signature): ${url}`));
+              }
+            }
+            
+            // Переименовываем в финальное имя
+            fs.rename(tmp, dest, (e) => {
+              if (e) {
+                reject(e);
+              } else {
+                resolve();
+              }
+            });
+          } catch (e) {
+            fs.unlink(tmp, () => {});
+            if (retries > 0) {
+              return setTimeout(
+                () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+                2000
+              );
+            }
+            reject(e);
+          }
+        });
+      });
+    }).on('error', (err) => {
+      file.close();
+      fs.unlink(tmp, () => {});
+      if (retries > 0) {
+        return setTimeout(
+          () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+          2000
+        );
+      }
       reject(err);
     });
   });
@@ -858,7 +977,18 @@ function dlFile(url, dest, retries = 3) {
 
 function checkSha1(filePath, expected) {
   if (!fs.existsSync(filePath)) return false;
-  if (!expected) return true;
+  if (!expected) {
+    // Если SHA1 не передана, проверяем минимум что это валидный ZIP/JAR
+    try {
+      const buf = fs.readFileSync(filePath);
+      if (filePath.endsWith('.jar') || filePath.endsWith('.zip')) {
+        // ZIP должен начинаться с PK (..) — сигнатура 0x04034b50
+        const sig = buf.readUInt32LE(0);
+        return sig === 0x04034b50;
+      }
+      return true;
+    } catch { return false; }
+  }
   try {
     const hash = createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
     return hash === expected;

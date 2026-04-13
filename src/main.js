@@ -131,6 +131,42 @@ ipcMain.handle('launcher-update', async (_, { url }) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+ipcMain.handle('auth-login', (_, { username, password, remember }) => {
+  if (!username || !password) return { ok: false, error: 'Введи логин и пароль' };
+  // TODO: проверка с сервером — пока принимаем любые данные
+  const store = loadStore();
+  store.username = username;
+  if (remember) { store.savedUser = username; store.savedPass = password; }
+  else { delete store.savedUser; delete store.savedPass; }
+  saveStore(store);
+  return { ok: true, username };
+});
+
+ipcMain.handle('auth-logout', () => {
+  const store = loadStore();
+  delete store.username;
+  saveStore(store);
+  return { ok: true };
+});
+
+ipcMain.handle('auth-get-saved', () => {
+  const s = loadStore();
+  return { username: s.savedUser || '', password: s.savedPass || '' };
+});
+
+ipcMain.handle('auth-get-user', () => loadStore().username || null);
+
+// ─── SKIN / CAPE ──────────────────────────────────────────────────────────────
+ipcMain.handle('skin-get', async (_, username) => {
+  try {
+    const skinUrl = `https://api.aurora-launcher.ru/mojang/username/skin/${encodeURIComponent(username)}`;
+    const capeUrl = `https://api.aurora-launcher.ru/mojang/username/cape/${encodeURIComponent(username)}`;
+    return { skinUrl, capeUrl };
+  } catch { return { skinUrl: null, capeUrl: null }; }
+});
+
 // ─── INSTALL CHECK ────────────────────────────────────────────────────────────
 // Проверяем: установлен ли Minecraft+Forge (есть ли launch.json)
 ipcMain.handle('install-check', () => {
@@ -145,6 +181,35 @@ ipcMain.handle('install-start', async () => {
     fs.mkdirSync(CLIENT_DIR, { recursive: true });
     // Всегда удаляем старый launch.json чтобы он пересоздался с актуальным modulePath
     try { fs.unlinkSync(LAUNCH_JSON); } catch {}
+
+    // ✅ ПРОВЕРКА ЦЕЛОСТНОСТИ МОДОВ ПЕРЕД УСТАНОВКОЙ
+    const modsDir = path.join(CLIENT_DIR, 'mods');
+    if (fs.existsSync(modsDir)) {
+      const badMods = [];
+      for (const f of fs.readdirSync(modsDir)) {
+        if (!f.endsWith('.jar')) continue;
+        const fpath = path.join(modsDir, f);
+        try {
+          const buf = fs.readFileSync(fpath);
+          const tail = buf.slice(Math.max(0, buf.length - 65536));
+          let found = false;
+          for (let i = tail.length - 4; i >= 0; i--) {
+            if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 0x05 && tail[i+3] === 0x06) {
+              found = true; break;
+            }
+          }
+          if (!found) badMods.push(f);
+        } catch { badMods.push(f); }
+      }
+      if (badMods.length > 0) {
+        for (const f of badMods) {
+          try { fs.unlinkSync(path.join(modsDir, f)); } catch {}
+        }
+        const store = loadStore();
+        delete store.modsVersion;
+        saveStore(store);
+      }
+    }
 
     await installer.install(CLIENT_DIR, (phase, done, total, name) => {
       const phaseNames = {
@@ -184,7 +249,8 @@ ipcMain.handle('mods-sync', async () => {
     const manifest = JSON.parse(manifestTxt);
     const store    = loadStore();
 
-    if (manifest.version === store.modsVersion) {
+    // Сравниваем как строки (trim на случай whitespace)
+    if (String(manifest.version).trim() === String(store.modsVersion || '').trim()) {
       return { ok: true, updated: false, msg: `Моды актуальны (${store.modsVersion})` };
     }
 
@@ -324,6 +390,7 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       ...forgeJvmArgs,
       '-cp', launch.classpath.join(sep),
       launch.mainClass,
+      // Vanilla game args
       '--username',    nickname || CFG.DEFAULT_USERNAME,
       '--version',     installer.MC_VERSION,
       '--gameDir',     launch.gameDir,
@@ -331,10 +398,11 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       '--assetIndex',  launch.assetIndex,
       '--accessToken', 'null',
       '--userType',    'legacy',
-      '--server',      CFG.SERVER_IP,
-      '--port',        String(CFG.SERVER_PORT),
-      // Отключаем ранний экран Forge через program arg (именно так проверяет Forge 47.x)
-      '--fml.earlyprogresswindow', 'false',
+      // Forge game args: --launchTarget forgeclient, --fml.forgeVersion и др.
+      // БЕЗ ЭТОГО Forge не знает что запускать → NPE в ImmediateWindowHandler
+      ...(launch.forgeGameArgs || []),
+      // Авто-коннект отключён — игроки выбирают сервер в меню Minecraft
+      // '--server', CFG.SERVER_IP, '--port', String(CFG.SERVER_PORT),
     ];
 
     // Убираем null/undefined и дедуплицируем ПАРНЫЕ аргументы (флаг + значение)

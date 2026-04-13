@@ -1,4 +1,106 @@
 'use strict';
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
+const loginScreen = document.getElementById('login-screen');
+const appEl       = document.getElementById('app');
+
+async function initLogin() {
+  const user = await api.authGetUser();
+  if (user) {
+    showApp(user);
+    return;
+  }
+  // Подставляем сохранённые данные
+  const saved = await api.authGetSaved();
+  if (saved.username) document.getElementById('li-user').value = saved.username;
+  if (saved.password) document.getElementById('li-pass').value = saved.password;
+  // Если оба поля заполнены — авто-логин
+  if (saved.username && saved.password) {
+    await doLogin();
+  }
+}
+
+async function doLogin() {
+  const username = document.getElementById('li-user').value.trim();
+  const password = document.getElementById('li-pass').value;
+  const remember = document.getElementById('li-rem').checked;
+  const errEl    = document.getElementById('login-err');
+  const btn      = document.getElementById('btn-login');
+
+  errEl.classList.remove('show');
+  if (!username || !password) {
+    errEl.textContent = '// Введи логин и пароль';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'ВХОД...';
+
+  const r = await api.authLogin({ username, password, remember });
+
+  btn.disabled = false;
+  btn.textContent = 'ВОЙТИ';
+
+  if (r.ok) {
+    showApp(r.username);
+  } else {
+    errEl.textContent = '// ' + (r.error || 'Ошибка входа');
+    errEl.classList.add('show');
+  }
+}
+
+function showApp(username) {
+  loginScreen.classList.add('hidden');
+  appEl.style.display = '';
+  updatePlayerCard(username);
+}
+
+async function updatePlayerCard(username) {
+  const uname   = document.getElementById('sb-uname');
+  const skinDef = document.getElementById('sb-skin-default');
+  const skinCanvas = document.getElementById('sb-skin-canvas');
+
+  if (uname) uname.textContent = username.toUpperCase();
+  if (skinDef) skinDef.textContent = (username[0] || '?').toUpperCase();
+
+  try {
+    const { skinUrl } = await api.skinGet(username);
+    if (!skinUrl || !skinCanvas) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Рисуем увеличенную голову (лицо 8x8 + оверлей из 8x8)
+      const ctx = skinCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      skinCanvas.width  = 36;
+      skinCanvas.height = 36;
+      // Масштаб: пиксели скина (64x64) → 1 пиксель скина = 4.5 пикселя canvas
+      const scale = 36 / 8;
+      // Лицо: x=8,y=8,w=8,h=8 в текстуре (первый слой)
+      ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 36, 36);
+      // Оверлей головы: x=40,y=8,w=8,h=8 (второй слой / шлем)
+      ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 36, 36);
+      skinCanvas.style.display = 'block';
+      if (skinDef) skinDef.style.display = 'none';
+    };
+    img.onerror = () => {};
+    img.src = skinUrl;
+  } catch {}
+}
+
+document.getElementById('btn-login')?.addEventListener('click', doLogin);
+document.getElementById('li-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('li-user')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('li-pass')?.focus(); });
+
+document.getElementById('btn-logout')?.addEventListener('click', async () => {
+  await api.authLogout();
+  loginScreen.classList.remove('hidden');
+  appEl.style.display = 'none';
+  document.getElementById('li-pass').value = '';
+  document.getElementById('login-err')?.classList.remove('show');
+});
+
 const $ = id => document.getElementById(id);
 
 // ─── WINDOW ──────────────────────────────────────────────────────────────────
@@ -62,16 +164,20 @@ function updatePlayBtn() {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 (async () => {
-  const saved = await api.getNick();
-  if (saved) {
-    nickInput.value = saved;
-    if (!isNickValid(saved)) nickError('Никнейм некорректен — исправь перед игрой');
+  // Сначала инициализируем логин
+  await initLogin();
+
+  // Никнейм всегда = имени профиля (логину)
+  const currentUser = await api.authGetUser();
+  if (currentUser) {
+    nickInput.value = currentUser;
+    api.setNick(currentUser);
   }
 
   checkLauncherUpdate();
   fillSettings();
-  pingServer();      // проверяем статус сервера сразу
-  setInterval(pingServer, 30000); // и каждые 30 сек
+  pingServer();
+  setInterval(pingServer, 30000);
 
   const { installed } = await api.installCheck();
   mcInstalled = installed;
@@ -287,6 +393,35 @@ $('btn-play').onclick = async () => {
   }
 };
 
+// ─── SERVER TABS ─────────────────────────────────────────────────────────────
+const SERVERS = [
+  {
+    name: 'VIPOK SERVER', ver: 'Minecraft 1.20.1 · Forge',
+    addr: 'subjects-emirates.gl.joinmc.link', icon: '⛏',
+  },
+  // Добавь данные второго сервера сюда когда будет готов:
+  // { name: 'СЕРВЕР 2', ver: '1.20.1 · Forge', addr: 'server2.example.com', icon: '🏰' },
+  // { name: 'СЕРВЕР 3', ver: '1.19.4 · Fabric', addr: 'server3.example.com', icon: '🌿' },
+];
+
+let currentServer = 0;
+
+function selectServer(idx) {
+  if (idx >= SERVERS.length) return;
+  currentServer = idx;
+  document.querySelectorAll('.sv-tab').forEach((t, i) => t.classList.toggle('on', i === idx));
+  const s = SERVERS[idx];
+  if ($('sv-name'))  $('sv-name').textContent  = s.name;
+  if ($('sv-ver'))   $('sv-ver').textContent   = s.ver;
+  if ($('sv-addr'))  $('sv-addr').textContent  = s.addr;
+  if ($('sv-icon'))  $('sv-icon').textContent  = s.icon || '⛏';
+  // Сбрасываем статус и пингуем новый сервер
+  const dot = $('sv-dot'), txt = $('sv-status-txt');
+  if (dot) dot.className = 'sv-dot';
+  if (txt) { txt.className = 'sv-status-txt'; txt.textContent = 'Проверяю...'; }
+  pingServer();
+}
+
 // ─── SERVER PING ─────────────────────────────────────────────────────────────
 async function pingServer() {
   const dot = $('sv-dot');
@@ -298,7 +433,8 @@ async function pingServer() {
     if (r.online) {
       dot.className = 'sv-dot online';
       txt.className = 'sv-status-txt online';
-      // Показываем игроков если сервер их вернул
+      const tabDot = $('sv-tab-dot-' + currentServer);
+      if (tabDot) tabDot.className = 'sv-tab-dot online';
       if (r.online_count !== undefined) {
         txt.textContent = `Онлайн · ${r.online_count}/${r.max_count} · ${r.ping} мс`;
       } else {
@@ -307,6 +443,8 @@ async function pingServer() {
     } else {
       dot.className = 'sv-dot offline';
       txt.className = 'sv-status-txt offline';
+      const tabDotOff = $('sv-tab-dot-' + currentServer);
+      if (tabDotOff) tabDotOff.className = 'sv-tab-dot offline';
       txt.textContent = 'Сервер недоступен';
     }
   } catch {
