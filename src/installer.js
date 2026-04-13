@@ -36,6 +36,9 @@ const JAVA17_MAC_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/mac/x64
 
 // ─── ГЛАВНАЯ ФУНКЦИЯ ─────────────────────────────────────────────────────────
 async function install(clientDir, onProgress = () => {}) {
+  // Установляем системные свойства для Maven репозиториев
+  process.env.MAVEN_OPTS = '-Dhttp.maxRedirects=5 -Dfile.encoding=UTF-8';
+
   const dirs = {
     root:      clientDir,
     libraries: path.join(clientDir, 'libraries'),
@@ -46,6 +49,7 @@ async function install(clientDir, onProgress = () => {}) {
     versions:  path.join(clientDir, 'versions'),
   };
   Object.values(dirs).forEach(d => fs.mkdirSync(d, { recursive: true }));
+
 
   // 0. Проверяем Java 17 — скачиваем если нужно
   const launcherDir = path.dirname(clientDir);
@@ -173,10 +177,11 @@ async function install(clientDir, onProgress = () => {}) {
   const forgeLogPath = path.join(clientDir, 'forge-install.log');
   onProgress('forge', 1, 3, 'Запускаю Forge installer (Java ' + (javaVer || '?') + ', 2-3 мин)...');
 
-  const forgeResult = spawnSync(javaExe, [
-    '-jar', forgeInstallerPath,
-    '--installClient', clientDir,
-  ], {
+const forgeResult = spawnSync(javaExe, [
+  '-Dhttp.proxyHost=',  // очищаем прокси если есть
+  '-jar', forgeInstallerPath,
+  '--installClient', clientDir,
+], {
     cwd:         clientDir,
     stdio:       'pipe',
     timeout:     10 * 60 * 1000,
