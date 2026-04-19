@@ -19,13 +19,19 @@ const fs     = require('fs');
 const path   = require('path');
 const os     = require('os');
 const zlib   = require('zlib');
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn: spawnProc } = require('child_process');
 const { createHash } = require('crypto');
 
 const MC_VERSION    = '1.20.1';
 const FORGE_VERSION = '1.20.1-47.4.16';
 const FORGE_JAR     = `forge-${FORGE_VERSION}-installer.jar`;
-const FORGE_URL     = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/${FORGE_JAR}`;
+const FORGE_URLS = [
+  'https://minecraft-inside.ru/download/470639/',  // Основной источник
+  'https://raw.githubusercontent.com/ViPok137/ViLauncher/main/forge-1.20.1-47.4.16-installer.jar',
+  `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/${FORGE_JAR}`,  // Fallback 1
+  `https://maven.codemc.org/repository/maven-public/net/minecraftforge/forge/${FORGE_VERSION}/${FORGE_JAR}`,  // Fallback 2
+];
+
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const RESOURCES_BASE  = 'https://resources.download.minecraft.net';
 
@@ -123,7 +129,19 @@ async function install(clientDir, onProgress = () => {}) {
   const forgeInstallerPath = path.join(clientDir, FORGE_JAR);
   if (!checkSha1(forgeInstallerPath)) {
     onProgress('forge', 0, 3, 'Скачиваю Forge installer...');
-    await dlFile(FORGE_URL, forgeInstallerPath);
+    let lastError;
+for (const url of FORGE_URLS) {
+  try {
+    await dlFile(url, forgeInstallerPath);
+    break;  // Успешно скачали
+  } catch (e) {
+    lastError = e;
+    console.error(`Forge URL failed: ${url}, trying next...`);
+  }
+}
+if (!fs.existsSync(forgeInstallerPath)) {
+  throw lastError || new Error('Не удалось скачать Forge ни с одного источника');
+}
   }
 
   onProgress('forge', 1, 3, 'Ищу Java 17 для Forge installer...');
@@ -179,19 +197,59 @@ async function install(clientDir, onProgress = () => {}) {
   const forgeLogPath = path.join(clientDir, 'forge-install.log');
   onProgress('forge', 1, 3, 'Запускаю Forge installer (Java ' + (javaVer || '?') + ', 2-3 мин)...');
 
-  const forgeResult = spawnSync(javaExe, [
-    '-jar', forgeInstallerPath,
-    '--installClient', clientDir,
-  ], {
-    cwd:         clientDir,
-    stdio:       'pipe',
-    timeout:     10 * 60 * 1000,
-    windowsHide: true,
+  // ── Запускаем Forge installer АСИНХРОННО (spawnSync блокирует Electron UI!) ──
+  const { forgeStdout, forgeStderr, exitCode: forgeExitCode } = await new Promise((resolve) => {
+    const { spawn: spawnAsync } = require('child_process');
+    const outChunks = [];
+    const errChunks = [];
+
+    const proc = spawnAsync(javaExe, [
+      '-Dmaven.wagon.http.retryHandler.class=standard',
+      '-Dmaven.wagon.http.retryHandler.count=5',
+      '-Dhttp.maxRedirects=10',
+      '-jar', forgeInstallerPath,
+      '--installClient', clientDir,
+    ], {
+      cwd:         clientDir,
+      stdio:       ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    proc.stdout?.on('data', chunk => {
+      outChunks.push(chunk);
+      // Отправляем прогресс по строкам вывода Forge
+      const line = chunk.toString().trim();
+      if (line && onProgress) {
+        const short = line.slice(0, 80);
+        if (line.includes('Downloading') || line.includes('Considering')) {
+          onProgress('forge', 1, 3, '⬇ ' + short);
+        }
+      }
+    });
+    proc.stderr?.on('data', chunk => errChunks.push(chunk));
+
+    // Таймаут 10 минут
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolve({ forgeStdout: '', forgeStderr: 'TIMEOUT: Forge installer превысил 10 минут', exitCode: -1 });
+    }, 10 * 60 * 1000);
+
+    proc.on('close', code => {
+      clearTimeout(timer);
+      resolve({
+        forgeStdout: Buffer.concat(outChunks).toString(),
+        forgeStderr: Buffer.concat(errChunks).toString(),
+        exitCode: code,
+      });
+    });
+
+    proc.on('error', err => {
+      clearTimeout(timer);
+      resolve({ forgeStdout: '', forgeStderr: err.message, exitCode: -1 });
+    });
   });
 
   // Сохраняем полный лог
-  const forgeStdout = (forgeResult.stdout || '').toString();
-  const forgeStderr = (forgeResult.stderr || '').toString();
   fs.writeFileSync(forgeLogPath,
     '=== STDOUT ===\n' + forgeStdout +
     '\n=== STDERR ===\n' + forgeStderr
@@ -202,7 +260,7 @@ async function install(clientDir, onProgress = () => {}) {
   // 6. Читаем forge version.json
   const forgeVersionId = findForgeVersionId(dirs.versions);
   if (!forgeVersionId) {
-    const exitCode = forgeResult.status;
+    const exitCode = forgeExitCode;
     // Ищем реальную ошибку в логе
     const errLines = forgeStderr.split('\n').filter(l =>
       l.includes('ERROR') || l.includes('Exception') || l.includes('FAILED') || l.includes('error')
@@ -902,6 +960,7 @@ function dlFile(url, dest, retries = 3) {
     const tmp = dest + '.tmp';
     fs.mkdirSync(path.dirname(tmp), { recursive: true });
     const file = fs.createWriteStream(tmp);
+    
     mod.get(url, { headers: { 'User-Agent': 'MC-Launcher/1.0' } }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         file.close(); fs.unlink(tmp, () => {});
@@ -912,11 +971,47 @@ function dlFile(url, dest, retries = 3) {
         if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
         return reject(new Error(`HTTP ${res.statusCode}: ${url}`));
       }
+      
       res.pipe(file);
-      file.on('finish', () => file.close(() => fs.rename(tmp, dest, e => e ? reject(e) : resolve())));
+      file.on('finish', () => {
+        file.close(() => {
+          // ✅ Проверяем что это валидный ZIP/JAR после скачивания
+          try {
+            const buf = fs.readFileSync(tmp);
+            if (tmp.endsWith('.jar') || tmp.endsWith('.zip')) {
+              const sig = buf.readUInt32LE(0);
+              if (sig !== 0x04034b50) {
+                fs.unlink(tmp, () => {});
+                if (retries > 0) {
+                  return setTimeout(
+                    () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+                    2000
+                  );
+                }
+                return reject(new Error(`Downloaded file corrupted (invalid ZIP): ${url}`));
+              }
+            }
+            fs.rename(tmp, dest, e => e ? reject(e) : resolve());
+          } catch (e) {
+            fs.unlink(tmp, () => {});
+            if (retries > 0) {
+              return setTimeout(
+                () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+                2000
+              );
+            }
+            reject(e);
+          }
+        });
+      });
     }).on('error', err => {
       file.close(); fs.unlink(tmp, () => {});
-      if (retries > 0) return setTimeout(() => dlFile(url, dest, retries - 1).then(resolve).catch(reject), 1000);
+      if (retries > 0) {
+        return setTimeout(
+          () => dlFile(url, dest, retries - 1).then(resolve).catch(reject),
+          2000
+        );
+      }
       reject(err);
     });
   });
@@ -924,7 +1019,17 @@ function dlFile(url, dest, retries = 3) {
 
 function checkSha1(filePath, expected) {
   if (!fs.existsSync(filePath)) return false;
-  if (!expected) return true;
+  if (!expected) {
+    // Если SHA1 не передана, проверяем что это валидный ZIP/JAR
+    try {
+      const buf = fs.readFileSync(filePath);
+      if (filePath.endsWith('.jar') || filePath.endsWith('.zip')) {
+        const sig = buf.readUInt32LE(0);
+        return sig === 0x04034b50;
+      }
+      return true;
+    } catch { return false; }
+  }
   try {
     const hash = createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
     return hash === expected;

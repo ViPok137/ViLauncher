@@ -374,6 +374,13 @@ $('btn-play').onclick = async () => {
   $('btn-play').textContent = '⏳ ЗАПУСК...';
 
   const r = await api.launch({ nickname: nick });
+  // Discord — статус "играет"
+  if (r.ok) {
+    try {
+      const ping = await api.serverPing();
+      await api.discordSetPlaying({ playerCount: ping.online ? ping.online_count : null });
+    } catch {}
+  }
 
   setTimeout(() => {
     $('btn-play').disabled = false;
@@ -453,6 +460,47 @@ async function pingServer() {
     txt.textContent = 'Ошибка проверки';
   }
 }
+
+
+// ─── SETTINGS ACTIONS ────────────────────────────────────────────────────────
+function showActionStatus(msg, isErr = false) {
+  const el = $('action-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'action-status show' + (isErr ? ' err' : '');
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+$('btn-check-mods')?.addEventListener('click', async () => {
+  $('btn-check-mods').disabled = true;
+  const r = await api.checkModsForce();
+  $('btn-check-mods').disabled = false;
+  if (r.ok) showActionStatus('✓ Версия сброшена — моды скачаются при следующем запуске');
+  else showActionStatus('✗ ' + r.error, true);
+});
+
+$('btn-reinstall-client')?.addEventListener('click', async () => {
+  if (!confirm('Удалить папку client полностью и начать установку заново?')) return;
+  $('btn-reinstall-client').disabled = true;
+  const r = await api.reinstallClient();
+  $('btn-reinstall-client').disabled = false;
+  if (r.ok) {
+    showActionStatus('✓ Клиент удалён — перейди на вкладку ИГРАТЬ и нажми УСТАНОВИТЬ');
+    // Обновляем статус установки
+    mcInstalled = false;
+    modsReady   = false;
+    showInstallBlock();
+    // Переходим на вкладку Играть
+    document.querySelectorAll('.ni').forEach(n => n.classList.remove('on'));
+    document.querySelectorAll('.pg').forEach(p => p.classList.remove('on'));
+    document.querySelector('.ni[data-p="home"]')?.classList.add('on');
+    $('pg-home')?.classList.add('on');
+  } else {
+    showActionStatus('✗ ' + r.error, true);
+  }
+});
+
+$('btn-open-dir')?.addEventListener('click', () => api.openLauncherDir());
 
 // ─── NEWS ─────────────────────────────────────────────────────────────────────
 let newsLoaded = false;

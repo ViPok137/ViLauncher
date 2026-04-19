@@ -339,6 +339,22 @@
       cursor:pointer;margin-top:2px;transition:color .15s}
     .sb-logout:hover{color:var(--p)}
 
+    /* Settings action buttons */
+    .sg-actions{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+    .btn-action{display:flex;align-items:center;gap:10px;padding:11px 16px;
+      border-radius:8px;cursor:pointer;transition:all .2s;font-family:'Orbitron',monospace;
+      font-size:10px;font-weight:700;letter-spacing:2px;width:100%;text-align:left;
+      background:var(--panel);border:1px solid var(--border);color:var(--text)}
+    .btn-action:hover{border-color:var(--c);color:var(--c);background:rgba(0,245,255,.06)}
+    .btn-action.danger:hover{border-color:var(--p);color:var(--p);background:rgba(255,45,120,.06)}
+    .btn-action .ba-ic{font-size:14px;width:20px;text-align:center}
+    .btn-action .ba-desc{font-family:'Share Tech Mono',monospace;font-size:9px;
+      color:var(--muted);font-weight:400;letter-spacing:0;margin-top:2px;display:block}
+    .action-status{font-family:'Share Tech Mono',monospace;font-size:10px;
+      color:var(--ok);margin-top:6px;display:none;padding-left:4px}
+    .action-status.show{display:block}
+    .action-status.err{color:var(--p)}
+
     .hidden{display:none!important}
   </style>
   </style>
@@ -527,6 +543,26 @@
             <button class="btn-ram-save" id="btn-ram-save">✓ СОХРАНИТЬ</button>
           </div>
           <div class="ram-saved" id="ram-saved">✓ Сохранено — применится при следующем запуске</div>
+        </div>
+
+        <!-- Действия -->
+        <div class="sg">
+          <div class="sg-title">Действия</div>
+          <div class="sg-actions">
+            <button class="btn-action" id="btn-check-mods">
+              <span class="ba-ic">🔄</span>
+              <div><span>ПРОВЕРИТЬ МОДЫ</span><span class="ba-desc">Сбросить версию и скачать обновления при следующем запуске</span></div>
+            </button>
+            <button class="btn-action" id="btn-reinstall-client">
+              <span class="ba-ic">⬇</span>
+              <div><span>ПЕРЕУСТАНОВИТЬ КЛИЕНТ</span><span class="ba-desc">Удалить и скачать заново Minecraft + Forge</span></div>
+            </button>
+            <button class="btn-action" id="btn-open-dir">
+              <span class="ba-ic">📁</span>
+              <div><span>ОТКРЫТЬ ПАПКУ</span><span class="ba-desc">%APPDATA%\.mc-launcher — данные игры и логи</span></div>
+            </button>
+          </div>
+          <div class="action-status" id="action-status"></div>
         </div>
 
         <div class="sg">

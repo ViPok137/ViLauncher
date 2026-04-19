@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('api', {
   // RAM
   ramGet:      ()      => ipcRenderer.invoke('ram-get'),
   ramSet:      data    => ipcRenderer.invoke('ram-set', data),
-  getAppInfo:  ()   => ipcRenderer.invoke('app-info'),
+  getAppInfo:       ()   => ipcRenderer.invoke('app-info'),
+  reinstallClient:  ()   => ipcRenderer.invoke('reinstall-client'),
+  checkModsForce:   ()   => ipcRenderer.invoke('check-mods'),
+  openLauncherDir:  ()   => ipcRenderer.invoke('open-launcher-dir'),
+  discordSetPlaying: d   => ipcRenderer.invoke('discord-set-playing', d),
+  discordSetLauncher:()  => ipcRenderer.invoke('discord-set-launcher'),
   onGameError: cb => ipcRenderer.on('game-error', (_, d) => cb(d)),
 });

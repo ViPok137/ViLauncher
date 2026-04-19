@@ -13,9 +13,7 @@ const installer = require('./installer');
 
 // ─── PATHS ───────────────────────────────────────────────────────────────────
 // На Windows используем %LOCALAPPDATA%\ViLauncher — не требует прав админа
-const LAUNCHER_DIR = process.platform === 'win32'
-  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'ViLauncher')
-  : path.join(os.homedir(), '.vilauncher');
+const LAUNCHER_DIR = path.join(os.homedir(), 'AppData', 'Roaming', '.mc-launcher');
 const CLIENT_DIR   = path.join(LAUNCHER_DIR, 'client');
 const STORE_PATH   = path.join(LAUNCHER_DIR, 'settings.json');
 const UPDATE_DIR   = path.join(LAUNCHER_DIR, 'update');
@@ -187,11 +185,12 @@ ipcMain.handle('install-start', async () => {
 
     await installer.install(CLIENT_DIR, (phase, done, total, name) => {
       const phaseNames = {
+        java:      '☕ Java 17',
         manifest:  '📋 Манифест',
         client:    '📦 Клиент',
         libraries: '📚 Библиотеки',
         assets:    '🖼 Ресурсы',
-        forge:     '⚙ Forge',
+        forge:     '⚙ Forge (2-3 мин)',
         done:      '✅ Готово',
       };
       win.webContents.send('install-progress', {
@@ -364,11 +363,10 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       `-Djava.library.path=${launch.nativesDir}`,
       `-Dminecraft.launcher.brand=mc-launcher`,
       `-Dminecraft.launcher.version=1.0`,
-      // Отключаем ранний экран Forge (и как system property, и как program arg ниже)
+      // Отключаем ранний экран Forge через JVM property
       '-Dfml.earlyprogresswindow=false',
-      // ignoreList — список jar'ов которые Forge НЕ должен открывать как модули
-      // Без этого Forge пытается загрузить client.jar как мод и падает
-      `-DignoreList=${path.basename(launch.classpath.find(p => p.includes(installer.MC_VERSION + '.jar')) || '')}`,
+      // НЕ добавляем свой -DignoreList — Forge сам прописывает полный список
+      // через forgeJvmArgs. Наш короткий список ПЕРЕКРЫВАЛ бы форджевый (Java берёт первый)
       // Открытия модулей для Forge 47.x
       '--add-opens', 'java.base/java.util.jar=ALL-UNNAMED',
       '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
@@ -391,6 +389,7 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
       '--assetIndex',  launch.assetIndex,
       '--accessToken', 'null',
       '--userType',    'legacy',
+      // Авто-коннект к серверу отключён — игрок выбирает сам в меню
       // Forge game args: --launchTarget forgeclient, --fml.forgeVersion и др.
       // БЕЗ ЭТОГО Forge не знает что запускать → NPE в ImmediateWindowHandler
       ...(launch.forgeGameArgs || []),
@@ -442,6 +441,8 @@ ipcMain.handle('game-launch', async (_, { nickname }) => {
     // Если процесс упал сразу (< 5 сек) — читаем лог и показываем ошибку
     child.on('exit', (code) => {
       fs.closeSync(logFile);
+      // Возвращаем Discord статус обратно на "в лаунчере"
+      setDiscordLauncher();
       if (code !== 0 && code !== null) {
         try {
           const log = fs.readFileSync(logPath, 'utf8').slice(-2000);
@@ -647,6 +648,114 @@ function autoRam() {
     '-XX:MaxTenuringThreshold=1',
   ];
 }
+
+
+// ─── DISCORD RPC ─────────────────────────────────────────────────────────────
+// Используем discord-rpc npm пакет (npm install discord-rpc)
+// CLIENT_ID берётся с https://discord.com/developers/applications
+let discordRpc = null;
+let discordReady = false;
+const DISCORD_CLIENT_ID = '1234567890123456789'; // ← замени на свой Client ID
+
+async function initDiscord() {
+  try {
+    const RPC = require('discord-rpc');
+    discordRpc = new RPC.Client({ transport: 'ipc' });
+
+    discordRpc.on('ready', () => {
+      discordReady = true;
+      setDiscordLauncher(); // Начальный статус — в лаунчере
+    });
+
+    discordRpc.on('disconnected', () => { discordReady = false; });
+
+    await discordRpc.login({ clientId: DISCORD_CLIENT_ID });
+  } catch {
+    // Discord не запущен или пакет не установлен — тихо игнорируем
+    discordRpc = null;
+  }
+}
+
+function setDiscordLauncher() {
+  if (!discordReady || !discordRpc) return;
+  try {
+    discordRpc.setActivity({
+      details:    'В лаунчере ViPok Server',
+      state:      'Minecraft 1.20.1 Forge',
+      largeImageKey:  'launcher_logo',
+      largeImageText: 'ViPok Launcher',
+      smallImageKey:  'minecraft_icon',
+      smallImageText: 'Minecraft 1.20.1',
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [
+        { label: 'Скачать лаунчер', url: 'https://github.com/ViPok137/ViLauncher/releases' },
+      ],
+    });
+  } catch {}
+}
+
+function setDiscordPlaying(playerCount) {
+  if (!discordReady || !discordRpc) return;
+  try {
+    discordRpc.setActivity({
+      details:    `Играет на ${CFG.SERVER_NAME}`,
+      state:      playerCount != null
+        ? `Онлайн: ${playerCount} игроков`
+        : 'Minecraft 1.20.1 Forge',
+      largeImageKey:  'minecraft_icon',
+      largeImageText: 'Minecraft 1.20.1 Forge',
+      smallImageKey:  'launcher_logo',
+      smallImageText: 'ViPok Launcher',
+      startTimestamp: Math.floor(Date.now() / 1000),
+      buttons: [
+        { label: 'Скачать лаунчер', url: 'https://github.com/ViPok137/ViLauncher/releases' },
+      ],
+    });
+  } catch {}
+}
+
+// Обновляем статус Discord при запуске
+ipcMain.handle('discord-set-playing', (_, { playerCount }) => {
+  setDiscordPlaying(playerCount);
+  return { ok: true };
+});
+ipcMain.handle('discord-set-launcher', () => {
+  setDiscordLauncher();
+  return { ok: true };
+});
+
+// ─── SETTINGS ACTIONS ────────────────────────────────────────────────────────
+// Переустановка клиента — удаляем папку client целиком
+ipcMain.handle('reinstall-client', async () => {
+  try {
+    if (fs.existsSync(CLIENT_DIR)) {
+      fs.rmSync(CLIENT_DIR, { recursive: true, force: true });
+    }
+    // Сбрасываем версию модов
+    const store = loadStore();
+    delete store.modsVersion;
+    saveStore(store);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// Проверка модов вручную — сбрасываем версию чтобы триггернуть перекачку
+ipcMain.handle('check-mods', async () => {
+  try {
+    const store = loadStore();
+    delete store.modsVersion;
+    saveStore(store);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// Открыть папку лаунчера в Проводнике
+ipcMain.handle('open-launcher-dir', () => {
+  try {
+    require('electron').shell.openPath(LAUNCHER_DIR);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 
 // ─── HTTP UTILS ──────────────────────────────────────────────────────────────
 function fetchText(url, timeoutMs = 15000) {
