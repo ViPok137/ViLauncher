@@ -1,6 +1,6 @@
 {
   "name": "mc-launcher",
-  "version": "1.0.0",
+  "version": "0.3.1",
   "description": "Minecraft Server Launcher",
   "main": "src/main.js",
   "scripts": {
@@ -13,8 +13,8 @@
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.yourserver.launcher",
-    "productName": "YourServer Launcher",
+    "appId": "com.vipok.vilauncher",
+    "productName": "ViPok Launcher",
     "directories": { "output": "dist" },
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
@@ -26,14 +26,21 @@
     },
     "nsis": {
       "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ViPok Launcher",
       "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
-      "deleteAppDataOnUninstall": false
+      "artifactName": "ViPok-Launcher-Setup-${version}.exe"
     },
     "publish": {
       "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME",
-      "repo": "YOUR_LAUNCHER_REPO"
+      "owner": "ViPok137",
+      "repo": "ViLauncher"
     }
   }
 }
