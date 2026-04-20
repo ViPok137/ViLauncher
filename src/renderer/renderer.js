@@ -56,35 +56,36 @@ function showApp(username) {
 }
 
 async function updatePlayerCard(username) {
-  const uname   = document.getElementById('sb-uname');
-  const skinDef = document.getElementById('sb-skin-default');
+  const uname      = document.getElementById('sb-uname');
+  const skinDef    = document.getElementById('sb-skin-default');
   const skinCanvas = document.getElementById('sb-skin-canvas');
 
   if (uname) uname.textContent = username.toUpperCase();
-  if (skinDef) skinDef.textContent = (username[0] || '?').toUpperCase();
+  if (skinDef) {
+    skinDef.textContent = (username[0] || '?').toUpperCase();
+    skinDef.style.display = 'flex';
+  }
+  if (skinCanvas) skinCanvas.style.display = 'none';
 
   try {
     const { skinUrl } = await api.skinGet(username);
+    // skinUrl теперь data:image/png;base64,... — никаких CORS проблем
     if (!skinUrl || !skinCanvas) return;
 
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
-      // Рисуем увеличенную голову (лицо 8x8 + оверлей из 8x8)
       const ctx = skinCanvas.getContext('2d');
-      ctx.imageSmoothingEnabled = false;
+      ctx.imageSmoothingEnabled = false; // пиксельный рендер
       skinCanvas.width  = 36;
       skinCanvas.height = 36;
-      // Масштаб: пиксели скина (64x64) → 1 пиксель скина = 4.5 пикселя canvas
-      const scale = 36 / 8;
-      // Лицо: x=8,y=8,w=8,h=8 в текстуре (первый слой)
+      // Лицо (первый слой): позиция 8,8 размером 8x8 в текстуре 64x64
       ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 36, 36);
-      // Оверлей головы: x=40,y=8,w=8,h=8 (второй слой / шлем)
+      // Оверлей (шлем): позиция 40,8 размером 8x8
       ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 36, 36);
       skinCanvas.style.display = 'block';
       if (skinDef) skinDef.style.display = 'none';
     };
-    img.onerror = () => {};
+    img.onerror = () => {}; // нет скина — остаётся буква
     img.src = skinUrl;
   } catch {}
 }

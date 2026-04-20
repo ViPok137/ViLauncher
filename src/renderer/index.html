@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.aurora-launcher.ru https://crafatar.com">
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
   <title>MC Launcher</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -406,7 +406,7 @@
       <div class="sb-player">
         <div class="sb-skin" id="sb-skin">
           <div class="sb-skin-default" id="sb-skin-default">?</div>
-          <img id="sb-skin-img" src="" style="display:none" alt="">
+          <canvas id="sb-skin-canvas"></canvas>
         </div>
         <div style="flex:1;min-width:0">
           <div class="sb-uname" id="sb-uname">—</div>
