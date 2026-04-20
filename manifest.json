@@ -3,7 +3,7 @@
   "mcVersion": "1.20.1",
   "files": [
   {
-    "path": "client"  "client/options.txt"
+    "path": "client/options.txt"
   },
   {
     "path": "mods/AI-Improvements-1.20-0.5.2.jar"
