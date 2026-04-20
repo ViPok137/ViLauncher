@@ -1,0 +1,10 @@
+{
+  "version": 14,
+  "SkinLoadOrder": [
+    {
+      "name": "ViPok Server",
+      "type": "CustomSkinAPI",
+      "root": "https://api.aurora-launcher.ru/mojang/username/"
+    }
+  ]
+}
