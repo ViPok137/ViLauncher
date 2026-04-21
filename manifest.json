@@ -5,9 +5,9 @@
   {
     "path": "options.txt"
   },
-  {
-    "path": "config/CustomSkinLoader.json"
-  },
+//  {
+//    "path": "config/CustomSkinLoader.json"
+//  },
   {
     "path": "mods/CustomSkinLoader_ForgeV2-14.28.jar"
   },
