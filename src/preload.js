@@ -44,5 +44,6 @@ contextBridge.exposeInMainWorld('api', {
   openLauncherDir:  ()   => ipcRenderer.invoke('open-launcher-dir'),
   discordSetPlaying: d   => ipcRenderer.invoke('discord-set-playing', d),
   discordSetLauncher:()  => ipcRenderer.invoke('discord-set-launcher'),
-  onGameError: cb => ipcRenderer.on('game-error', (_, d) => cb(d)),
+  onGameError:  cb => ipcRenderer.on('game-error',  (_, d) => cb(d)),
+  onMcRunning:  cb => ipcRenderer.on('mc-running',   (_, d) => cb(d)),
 });

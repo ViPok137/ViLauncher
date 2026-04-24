@@ -36,9 +36,14 @@ const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifes
 const RESOURCES_BASE  = 'https://resources.download.minecraft.net';
 
 // Java 17 Temurin от Adoptium — автоматическая установка если нет Java 17
+// Java 17 — несколько источников в порядке приоритета
+// Adoptium (Eclipse Temurin) — открытая сборка, JRE-only (~45 МБ ZIP)
 const JAVA17_WIN_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jre/hotspot/normal/eclipse?project=jdk';
 const JAVA17_LIN_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jre/hotspot/normal/eclipse?project=jdk';
 const JAVA17_MAC_URL  = 'https://api.adoptium.net/v3/binary/latest/17/ga/mac/x64/jre/hotspot/normal/eclipse?project=jdk';
+// Прямые запасные ссылки (Temurin 17.0.12 ZIP)
+const JAVA17_WIN_FALLBACK = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_windows_hotspot_17.0.12_7.zip';
+const JAVA17_LIN_FALLBACK = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.12_7.tar.gz';
 
 // ─── ГЛАВНАЯ ФУНКЦИЯ ─────────────────────────────────────────────────────────
 async function install(clientDir, onProgress = () => {}) {
@@ -125,23 +130,68 @@ async function install(clientDir, onProgress = () => {}) {
     onProgress('assets', assetsDone, assetObjects.length, `${assetsDone}/${assetObjects.length}`);
   }
 
-  // 5. Forge installer
+  // 5. Forge installer — скачиваем с проверкой целостности ZIP
   const forgeInstallerPath = path.join(clientDir, FORGE_JAR);
-  if (!checkSha1(forgeInstallerPath)) {
-    onProgress('forge', 0, 3, 'Скачиваю Forge installer...');
-    let lastError;
-for (const url of FORGE_URLS) {
-  try {
-    await dlFile(url, forgeInstallerPath);
-    break;  // Успешно скачали
-  } catch (e) {
-    lastError = e;
-    console.error(`Forge URL failed: ${url}, trying next...`);
+
+  // Проверяем что уже скачанный файл не повреждён
+  function isValidZip(filePath) {
+    if (!fs.existsSync(filePath)) return false;
+    try {
+      const buf  = fs.readFileSync(filePath);
+      if (buf.length < 22) return false; // минимум ZIP
+      // Ищем END сигнатуру 0x06054b50 в хвосте файла
+      const tail = buf.slice(Math.max(0, buf.length - 65536));
+      for (let i = tail.length - 4; i >= 0; i--) {
+        if (tail[i]===0x50 && tail[i+1]===0x4b && tail[i+2]===0x05 && tail[i+3]===0x06) return true;
+      }
+      return false;
+    } catch { return false; }
   }
-}
-if (!fs.existsSync(forgeInstallerPath)) {
-  throw lastError || new Error('Не удалось скачать Forge ни с одного источника');
-}
+
+  if (!isValidZip(forgeInstallerPath)) {
+    // Удаляем повреждённый файл если есть
+    try { fs.unlinkSync(forgeInstallerPath); } catch {}
+
+    let downloaded = false;
+    const MAX_ATTEMPTS = 3;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      onProgress('forge', 0, 3,
+        attempt === 1
+          ? 'Скачиваю Forge installer...'
+          : `Повторная загрузка Forge (попытка ${attempt}/${MAX_ATTEMPTS})...`
+      );
+
+      // Перебираем зеркала
+      for (const url of FORGE_URLS) {
+        try {
+          await dlFile(url, forgeInstallerPath);
+          // Проверяем целостность сразу после скачивания
+          if (isValidZip(forgeInstallerPath)) {
+            downloaded = true;
+            break;
+          }
+          // Файл повреждён — удаляем и пробуем следующее зеркало
+          onProgress('forge', 0, 3, `Зеркало ${url.split('/')[2]} вернуло повреждённый файл, пробую другое...`);
+          try { fs.unlinkSync(forgeInstallerPath); } catch {}
+        } catch (e) {
+          console.error('Forge URL failed:', url, e.message);
+          try { fs.unlinkSync(forgeInstallerPath); } catch {}
+        }
+      }
+
+      if (downloaded) break;
+      // Небольшая пауза перед следующей попыткой
+      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    if (!downloaded) {
+      throw new Error(
+        'Не удалось скачать Forge installer после ' + MAX_ATTEMPTS + ' попыток.\n' +
+        'Возможно проблема с интернетом или серверы Forge временно недоступны.\n' +
+        'Попробуй нажать ПОВТОРИТЬ через несколько минут.'
+      );
+    }
   }
 
   onProgress('forge', 1, 3, 'Ищу Java 17 для Forge installer...');
@@ -737,8 +787,8 @@ async function ensureJava17(launcherDir, onProgress) {
     // Если Adoptium API недоступен — пробуем прямую ссылку
     onProgress('java', 0, 1, 'Пробую альтернативный источник Java 17...');
     const fallbackUrl = process.platform === 'win32'
-      ? 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_windows_hotspot_17.0.12_7.zip'
-      : 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.12_7.tar.gz';
+      ? JAVA17_WIN_FALLBACK
+      : JAVA17_LIN_FALLBACK;
     await dlFileProgress(fallbackUrl, tmpArchive, (done, total) => {
       const pct = total > 0 ? Math.round(done / total * 100) : 0;
       onProgress('java', pct, 100, `Java 17 JRE: ${pct}%`);

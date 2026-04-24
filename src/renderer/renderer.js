@@ -503,6 +503,22 @@ $('btn-reinstall-client')?.addEventListener('click', async () => {
 
 $('btn-open-dir')?.addEventListener('click', () => api.openLauncherDir());
 
+
+// ─── MC RUNNING STATE ────────────────────────────────────────────────────────
+api.onMcRunning(({ running }) => {
+  const btn = $('btn-play');
+  if (!btn) return;
+  if (running) {
+    btn.disabled = true;
+    btn.textContent = '🎮 ИГРА ЗАПУЩЕНА';
+    btn.style.opacity = '0.7';
+  } else {
+    btn.style.opacity = '';
+    btn.textContent = '▶ ЗАПУСТИТЬ';
+    updatePlayBtn(); // восстанавливаем состояние
+  }
+});
+
 // ─── NEWS ─────────────────────────────────────────────────────────────────────
 let newsLoaded = false;
 async function loadNews() {
