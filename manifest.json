@@ -1,5 +1,5 @@
 {
-  "version": "1.2.4",
+  "version": "1.2.5",
   "mcVersion": "1.20.1",
   "files": [
   {
@@ -7,6 +7,12 @@
   },
   {
     "path": "config/CustomSkinLoader.json"
+  },
+  {
+    "path": "config/InventoryHUD/curios.json"
+  },
+  {
+    "path": "config/inventoryhud-client.toml"
   },
   {
     "path": "mods/CustomSkinLoader_ForgeV2-14.28.jar"
