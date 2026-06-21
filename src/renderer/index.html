@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:">
   <title>MC Launcher</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -140,6 +140,7 @@
     .nick-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
     .nick-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;
       color:var(--muted);text-transform:uppercase;white-space:nowrap}
+    .nick-display{flex:1;font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--c);padding:10px 14px;background:rgba(0,245,255,.03);border:1px solid var(--border);border-radius:7px;text-align:right}
     .nick-input{flex:1;height:38px;background:rgba(0,245,255,.04);border:1px solid var(--border);
       border-radius:6px;padding:0 12px;font-family:'Share Tech Mono',monospace;font-size:13px;
       color:var(--text);outline:none;transition:all .18s;min-width:0}
@@ -355,6 +356,36 @@
     .action-status.show{display:block}
     .action-status.err{color:var(--p)}
 
+    
+    /* appearance tab */
+    .mr-type-btn{padding:5px 12px;border:1px solid var(--border);background:transparent;
+      border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:10px;
+      color:var(--muted);cursor:pointer;transition:all .2s}
+    .mr-type-btn.on{border-color:var(--c);color:var(--c);background:rgba(0,245,255,.08)}
+    .mr-type-btn:hover{border-color:var(--c);color:var(--c)}
+    .mr-results{margin-top:12px;max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+    .mr-card{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;
+      background:rgba(0,245,255,.025);border:1px solid var(--border);transition:all .15s}
+    .mr-card:hover{border-color:rgba(0,245,255,.3)}
+    .mr-icon{width:40px;height:40px;border-radius:6px;background:var(--d3);flex-shrink:0;
+      object-fit:cover;border:1px solid var(--border)}
+    .mr-info{flex:1;min-width:0}
+    .mr-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--text);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mr-desc{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+    .mr-dl-btn{padding:6px 14px;border:1px solid var(--c);background:rgba(0,245,255,.06);
+      border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--c);
+      cursor:pointer;flex-shrink:0;transition:all .2s}
+    .mr-dl-btn:hover{background:rgba(0,245,255,.15)}
+    .mr-dl-btn:disabled{opacity:.5;cursor:not-allowed}
+    .mr-installed-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+    .mr-installed-item{display:flex;justify-content:space-between;align-items:center;
+      padding:8px 12px;background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.15);
+      border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--ok)}
+    .mr-remove-btn{color:var(--p);cursor:pointer;font-size:13px;padding:2px 6px}
+    .mr-remove-btn:hover{opacity:.7}
+
     .hidden{display:none!important}
   </style>
   </style>
@@ -415,6 +446,7 @@
       </div>
       <nav>
         <div class="ni on" data-p="home"><span class="ni-ic">⚡</span>ИГРАТЬ</div>
+        <div class="ni" data-p="appearance"><span class="ni-ic">🎨</span>ВНЕШНИЙ ВИД</div>
         <div class="ni" data-p="news"><span class="ni-ic">📡</span>НОВОСТИ</div>
         <div class="ni" data-p="settings"><span class="ni-ic">⚙</span>НАСТРОЙКИ</div>
       </nav>
@@ -468,7 +500,7 @@
 
         <!-- Server tabs -->
         <div class="sv-tabs">
-          <div class="sv-tab on" id="sv-tab-0" onclick="selectServer(0)">
+          <div class="sv-tab on" id="sv-tab-0">
             <div class="sv-tab-name"><span class="sv-tab-dot" id="sv-tab-dot-0"></span>VIPOK SMP</div>
             <div class="sv-tab-ver">1.20.1 · Forge</div>
           </div>
@@ -497,9 +529,8 @@
           </div>
           <div class="nick-row">
             <span class="nick-label">Никнейм</span>
-            <input class="nick-input" id="nick" type="text" placeholder="Никнейм" style="opacity:.8;cursor:default" maxlength="16" spellcheck="false">
+            <span class="nick-display" id="nick">—</span>
           </div>
-          <div class="nick-err" id="nick-err"></div>
           <button class="btn-launch" id="btn-play" disabled>▶ &nbsp;ЗАПУСТИТЬ</button>
         </div>
       </div>
@@ -514,6 +545,54 @@
             <div class="sk" style="width:55%;height:13px;margin-bottom:9px"></div>
             <div class="sk" style="width:100%;height:11px;margin-bottom:4px"></div>
             <div class="sk" style="width:75%;height:11px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- APPEARANCE -->
+      <div class="pg" id="pg-appearance">
+        <div class="pg-title">ВНЕШНИЙ ВИД</div>
+        <div class="pg-sub">// Скин, шейдеры и ресурспаки</div>
+
+        <!-- Кастомный скин -->
+        <div class="ram-box">
+          <div class="ram-box-title">Свой скин</div>
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+            <div class="sb-skin" style="width:48px;height:48px;flex-shrink:0">
+              <div class="sb-skin-default" id="av-skin-default">?</div>
+              <canvas id="av-skin-canvas"></canvas>
+            </div>
+            <div style="flex:1;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted)">
+              <div id="av-skin-status">Используется скин с сервера</div>
+            </div>
+          </div>
+          <div class="ram-btns">
+            <button class="btn-ram-auto" id="btn-skin-upload">📁 ЗАГРУЗИТЬ PNG</button>
+            <button class="btn-ram-save" id="btn-skin-reset" style="border-color:var(--p);color:var(--p);background:rgba(255,45,120,.06)">✕ СБРОСИТЬ</button>
+          </div>
+          <div class="ram-saved" id="skin-saved">✓ Скин обновлён</div>
+        </div>
+
+        <!-- Поиск шейдеров/ресурспаков -->
+        <div class="ram-box">
+          <div class="ram-box-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Modrinth</span>
+            <div style="display:flex;gap:6px">
+              <button class="mr-type-btn on" id="mr-tab-shader" data-type="shader">Шейдеры</button>
+              <button class="mr-type-btn" id="mr-tab-rp" data-type="resourcepack">Ресурспаки</button>
+            </div>
+          </div>
+          <div class="fw" style="margin-top:10px">
+            <input class="fi" id="mr-search" type="text" placeholder="Поиск... (например BSL, Faithful)" style="height:38px">
+          </div>
+          <div id="mr-results" class="mr-results"></div>
+        </div>
+
+        <!-- Установленные -->
+        <div class="ram-box">
+          <div class="ram-box-title">Установлено</div>
+          <div id="mr-installed" class="mr-installed-list">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted)">Загрузка...</div>
           </div>
         </div>
       </div>

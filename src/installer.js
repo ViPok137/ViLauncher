@@ -22,6 +22,18 @@ const zlib   = require('zlib');
 const { spawnSync, spawn: spawnProc } = require('child_process');
 const { createHash } = require('crypto');
 
+// ТЗ 2.6: единое логирование через electron-log (тот же файл что и main.js использует)
+let log;
+try {
+  log = require('electron-log');
+} catch {
+  log = {
+    info:  (...a) => console.log('[info]', ...a),
+    warn:  (...a) => console.warn('[warn]', ...a),
+    error: (...a) => console.error('[error]', ...a),
+  };
+}
+
 const MC_VERSION    = '1.20.1';
 const FORGE_VERSION = '1.20.1-47.4.16';
 const FORGE_JAR     = `forge-${FORGE_VERSION}-installer.jar`;
@@ -175,7 +187,7 @@ async function install(clientDir, onProgress = () => {}) {
           onProgress('forge', 0, 3, `Зеркало ${url.split('/')[2]} вернуло повреждённый файл, пробую другое...`);
           try { fs.unlinkSync(forgeInstallerPath); } catch {}
         } catch (e) {
-          console.error('Forge URL failed:', url, e.message);
+          log.error('Forge URL failed:', url, e.message);
           try { fs.unlinkSync(forgeInstallerPath); } catch {}
         }
       }
@@ -752,73 +764,62 @@ function extractForgeGameArgs(forgeJson, clientDir, dirs) {
   return args;
 }
 
-// ─── JAVA AUTO-INSTALL ───────────────────────────────────────────────────────
-// Если Java 17 не найдена — скачиваем Temurin 17 JRE прямо в папку лаунчера
+// ─── JAVA AUTO-INSTALL (ТЗ 2.5: изолированная portable Java, системная игнорируется) ──
+// Лаунчер ПОЛНОСТЬЮ игнорирует системную Java (любые версии 8/11/21 и PATH).
+// Всегда используется собственная Java 17 в %APPDATA%/.mc-launcher/runtime/java17/
 async function ensureJava17(launcherDir, onProgress) {
-  // Сначала проверяем есть ли уже bundled JRE
-  const bundledJava = path.join(launcherDir, 'jre17', 'bin',
+  const javaExe = path.join(launcherDir, 'runtime', 'java17', 'bin',
+    process.platform === 'win32' ? 'javaw.exe' : 'java');
+  const javaExeConsole = path.join(launcherDir, 'runtime', 'java17', 'bin',
     process.platform === 'win32' ? 'java.exe' : 'java');
-  if (fs.existsSync(bundledJava)) return bundledJava;
 
-  // Пробуем найти системную Java 17
-  const systemJava = findJava(launcherDir);
-  const ver = getJavaVersion(systemJava);
-  if (ver === 17) return systemJava;
+  // Уже скачана и распакована — используем без проверки системной Java
+  if (fs.existsSync(javaExeConsole)) return javaExeConsole;
 
-  // Java 17 не найдена — скачиваем автоматически
-  onProgress('java', 0, 1, 'Java 17 не найдена, скачиваю автоматически (~45 МБ)...');
+  onProgress('java', 0, 1, 'Скачиваю изолированную Java 17 (~45 МБ)...');
 
-  const jre17Dir = path.join(launcherDir, 'jre17');
-  const tmpArchive = path.join(launcherDir, 'jre17.tmp');
+  const runtimeDir   = path.join(launcherDir, 'runtime', 'java17');
+  const tmpArchive    = path.join(launcherDir, 'runtime', 'java17.tmp');
+  fs.mkdirSync(path.dirname(tmpArchive), { recursive: true });
 
-  // Выбираем URL в зависимости от ОС
   let dlUrl;
   if (process.platform === 'win32')        dlUrl = JAVA17_WIN_URL;
   else if (process.platform === 'darwin')  dlUrl = JAVA17_MAC_URL;
   else                                     dlUrl = JAVA17_LIN_URL;
 
-  // Adoptium API возвращает redirect — скачиваем с прогрессом
   try {
     await dlFileProgress(dlUrl, tmpArchive, (done, total) => {
       const pct = total > 0 ? Math.round(done / total * 100) : 0;
-      onProgress('java', pct, 100, `Скачиваю Java 17 JRE: ${pct}%`);
+      onProgress('java', pct, 100, `Скачиваю Java 17: ${pct}%`);
     });
   } catch (e) {
-    // Если Adoptium API недоступен — пробуем прямую ссылку
     onProgress('java', 0, 1, 'Пробую альтернативный источник Java 17...');
-    const fallbackUrl = process.platform === 'win32'
-      ? JAVA17_WIN_FALLBACK
-      : JAVA17_LIN_FALLBACK;
+    const fallbackUrl = process.platform === 'win32' ? JAVA17_WIN_FALLBACK : JAVA17_LIN_FALLBACK;
     await dlFileProgress(fallbackUrl, tmpArchive, (done, total) => {
       const pct = total > 0 ? Math.round(done / total * 100) : 0;
-      onProgress('java', pct, 100, `Java 17 JRE: ${pct}%`);
+      onProgress('java', pct, 100, `Java 17: ${pct}%`);
     });
   }
 
   onProgress('java', 99, 100, 'Распаковываю Java 17...');
-  fs.mkdirSync(jre17Dir, { recursive: true });
+  fs.mkdirSync(runtimeDir, { recursive: true });
 
-  // Распаковываем архив
   if (process.platform === 'win32') {
-    // ZIP
-    await extractZipToDir(tmpArchive, jre17Dir);
+    await extractZipToDir(tmpArchive, runtimeDir);
   } else {
-    // tar.gz — используем системный tar
-    const tarResult = spawnSync('tar', ['xzf', tmpArchive, '-C', jre17Dir, '--strip-components=1'], {
+    const tarResult = spawnSync('tar', ['xzf', tmpArchive, '-C', runtimeDir, '--strip-components=1'], {
       stdio: 'pipe', timeout: 60000,
     });
     if (tarResult.status !== 0) throw new Error('Ошибка распаковки Java: ' + (tarResult.stderr || '').toString().slice(0, 200));
   }
 
-  // Удаляем архив
   try { fs.unlinkSync(tmpArchive); } catch {}
 
-  // Ищем java.exe внутри распакованной папки
-  const javaExe = findBundledJava(jre17Dir);
-  if (!javaExe) throw new Error('Java 17 распакована но java.exe не найден в ' + jre17Dir);
+  const foundJava = findBundledJava(runtimeDir);
+  if (!foundJava) throw new Error('Java 17 распакована, но исполняемый файл не найден в ' + runtimeDir);
 
-  onProgress('java', 100, 100, 'Java 17 установлена успешно');
-  return javaExe;
+  onProgress('java', 100, 100, 'Java 17 установлена в изолированную директорию');
+  return foundJava;
 }
 
 // Ищем java.exe/java внутри распакованной папки JRE
@@ -923,9 +924,9 @@ function findJava(launcherDir) {
     return 'java';
   }
 
-  // Windows: сначала смотрим наш bundled JRE17 в папке лаунчера
+  // Windows: сначала смотрим нашу изолированную Java в runtime/java17/
   if (launcherDir) {
-    const bundled = path.join(launcherDir, 'jre17', 'bin', 'java.exe');
+    const bundled = path.join(launcherDir, 'runtime', 'java17', 'bin', 'java.exe');
     if (fs.existsSync(bundled)) return bundled;
   }
 
@@ -1067,15 +1068,37 @@ function dlFile(url, dest, retries = 3) {
   });
 }
 
+// ТЗ 2.4: проверка структуры END-записи центрального каталога (EOCD).
+// Старая проверка сигнатуры 0x04034b50 в НАЧАЛЕ файла пропускала оборванные
+// закачки — у битого файла первые байты валидны, а хвост отсутствует.
+// EOCD-сигнатура 0x06054b50 физически не может появиться без полной записи файла.
+function checkZipIntegrity(filePath) {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const stat = fs.fstatSync(fd);
+    if (stat.size < 22) { fs.closeSync(fd); return false; } // меньше минимального ZIP
+
+    // Читаем последние 1024 байта (или весь файл, если он меньше)
+    const readLength = Math.min(stat.size, 1024);
+    const buffer = Buffer.alloc(readLength);
+    fs.readSync(fd, buffer, 0, readLength, stat.size - readLength);
+    fs.closeSync(fd);
+
+    // Ищем сигнатуру EOCD (0x06054b50) в буфере с конца
+    for (let i = readLength - 22; i >= 0; i--) {
+      if (buffer.readUInt32LE(i) === 0x06054b50) return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
 function checkSha1(filePath, expected) {
   if (!fs.existsSync(filePath)) return false;
   if (!expected) {
-    // Если SHA1 не передана, проверяем что это валидный ZIP/JAR
+    // Если SHA1 не передана — проверяем целостность через EOCD (ТЗ 2.4)
     try {
-      const buf = fs.readFileSync(filePath);
       if (filePath.endsWith('.jar') || filePath.endsWith('.zip')) {
-        const sig = buf.readUInt32LE(0);
-        return sig === 0x04034b50;
+        return checkZipIntegrity(filePath);
       }
       return true;
     } catch { return false; }

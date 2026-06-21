@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('api', {
   authGetUser: ()   => ipcRenderer.invoke('auth-get-user'),
   // Skin
   skinGet:     u    => ipcRenderer.invoke('skin-get', u),
+  skinUpload:  ()   => ipcRenderer.invoke('skin-upload'),
+  skinReset:   ()   => ipcRenderer.invoke('skin-reset'),
+  // Modrinth (шейдеры, ресурспаки)
+  modrinthSearch:    data => ipcRenderer.invoke('modrinth-search', data),
+  modrinthVersions:  data => ipcRenderer.invoke('modrinth-versions', data),
+  modrinthDownload:  data => ipcRenderer.invoke('modrinth-download', data),
+  modrinthInstalled: data => ipcRenderer.invoke('modrinth-installed', data),
+  modrinthRemove:    data => ipcRenderer.invoke('modrinth-remove', data),
+  onModrinthDlProg:  cb   => ipcRenderer.on('modrinth-dl-progress', (_, d) => cb(d)),
   // RAM
   ramGet:      ()      => ipcRenderer.invoke('ram-get'),
   ramSet:      data    => ipcRenderer.invoke('ram-set', data),

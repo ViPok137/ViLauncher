@@ -74,16 +74,27 @@ async function updatePlayerCard(username) {
 
     const img = new Image();
     img.onload = () => {
-      const ctx = skinCanvas.getContext('2d');
-      ctx.imageSmoothingEnabled = false; // пиксельный рендер
-      skinCanvas.width  = 36;
-      skinCanvas.height = 36;
-      // Лицо (первый слой): позиция 8,8 размером 8x8 в текстуре 64x64
-      ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 36, 36);
-      // Оверлей (шлем): позиция 40,8 размером 8x8
-      ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 36, 36);
-      skinCanvas.style.display = 'block';
-      if (skinDef) skinDef.style.display = 'none';
+      try {
+        // ТЗ 2.3: нативный Canvas2D drawImage вместо попиксельного цикла.
+        // Критично для чёткости: canvas.width/height (внутреннее разрешение)
+        // ДОЛЖНО точно совпадать с CSS-размером элемента — иначе браузер
+        // масштабирует через CSS и появляется блюр независимо от imageSmoothingEnabled.
+        const SIZE = 64; // совпадает с CSS .sb-skin canvas { width:64px; height:64px }
+
+        skinCanvas.width  = SIZE;
+        skinCanvas.height = SIZE;
+        const ctx = skinCanvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false; // отключаем сглаживание — сохраняем pixel-art
+        ctx.clearRect(0, 0, SIZE, SIZE);
+
+        // Лицо (первый слой): координаты 8,8 размер 8x8 в текстуре скина → сразу в целевой размер
+        ctx.drawImage(img, 8, 8, 8, 8, 0, 0, SIZE, SIZE);
+        // Оверлей/шлем (второй слой): координаты 40,8 размер 8x8 — поверх лица
+        ctx.drawImage(img, 40, 8, 8, 8, 0, 0, SIZE, SIZE);
+
+        skinCanvas.style.display = 'block';
+        if (skinDef) skinDef.style.display = 'none';
+      } catch(err) { console.warn('skin render:', err); }
     };
     img.onerror = () => {}; // нет скина — остаётся буква
     img.src = skinUrl;
@@ -116,8 +127,9 @@ document.querySelectorAll('.ni').forEach(el => {
     document.querySelectorAll('.pg').forEach(p => p.classList.remove('on'));
     el.classList.add('on');
     $('pg-' + el.dataset.p).classList.add('on');
-    if (el.dataset.p === 'news')     loadNews();
-    if (el.dataset.p === 'settings') fillSettings();
+    if (el.dataset.p === 'news')       loadNews();
+    if (el.dataset.p === 'settings')   fillSettings();
+    if (el.dataset.p === 'appearance') initAppearanceTab();
   };
 });
 
@@ -133,34 +145,34 @@ function isNickValid(nick) {
   return !!nick && NICK_RE.test(nick);
 }
 
+// Никнейм — только отображение, всегда равен логину. Редактирование убрано.
 const nickInput = $('nick');
-nickInput.oninput = () => {
-  const nick = nickInput.value.trim();
-
-  if (!nick) {
-    nickError('');
-  } else if (nick.length < 3) {
-    nickError('Минимум 3 символа');
-  } else if (nick.length > 16) {
-    nickError('Максимум 16 символов');
-  } else if (!NICK_RE.test(nick)) {
-    nickError('Только латиница, цифры и _');
-  } else {
-    nickError('');
-    api.setNick(nick);
-  }
-
-  updatePlayBtn();
-};
+let currentNick = '';
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let mcInstalled  = false;
 let modsReady    = false;
 let isInstalling = false;
+let serverOnline = null; // null = ещё не проверено, true/false = известный статус (ТЗ 3.4)
 
 function updatePlayBtn() {
-  const nick = nickInput.value.trim();
-  $('btn-play').disabled = !isNickValid(nick) || !mcInstalled || !modsReady || isInstalling;
+  // ТЗ 3.4: кнопка ЗАПУСТИТЬ заблокирована пока сервер точно не подтверждён онлайн.
+  // serverOnline === null (ещё проверяется) тоже блокирует — не даём играть в офлайн-неопределённости.
+  const btn = $('btn-play');
+  const blocked = !isNickValid(currentNick) || !mcInstalled || !modsReady
+                || isInstalling || serverOnline !== true;
+  btn.disabled = blocked;
+
+  // Подсказка причины блокировки прямо в тексте кнопки (только если не идёт запуск/установка)
+  if (!isInstalling && btn.textContent !== '⏳ ЗАПУСК...') {
+    if (serverOnline === false && mcInstalled && modsReady) {
+      btn.textContent = '⛔ СЕРВЕР НЕДОСТУПЕН';
+    } else if (serverOnline === null && mcInstalled && modsReady) {
+      btn.textContent = '⏳ ПРОВЕРКА СЕРВЕРА...';
+    } else if (mcInstalled && modsReady && serverOnline === true) {
+      btn.textContent = '▶ ЗАПУСТИТЬ';
+    }
+  }
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -168,10 +180,11 @@ function updatePlayBtn() {
   // Сначала инициализируем логин
   await initLogin();
 
-  // Никнейм всегда = имени профиля (логину)
+  // Никнейм всегда = имени профиля (логину) — без возможности редактирования
   const currentUser = await api.authGetUser();
   if (currentUser) {
-    nickInput.value = currentUser;
+    currentNick = currentUser;
+    if (nickInput) nickInput.textContent = currentUser;
     api.setNick(currentUser);
   }
 
@@ -368,7 +381,7 @@ api.onGameError(({ error }) => {
 });
 
 $('btn-play').onclick = async () => {
-  const nick = nickInput.value.trim();
+  const nick = currentNick;
   if (!isNickValid(nick)) return;
 
   $('btn-play').disabled = true;
@@ -439,6 +452,7 @@ async function pingServer() {
   try {
     const r = await api.serverPing();
     if (r.online) {
+      serverOnline = true; // ТЗ 3.4
       dot.className = 'sv-dot online';
       txt.className = 'sv-status-txt online';
       const tabDot = $('sv-tab-dot-' + currentServer);
@@ -449,6 +463,7 @@ async function pingServer() {
         txt.textContent = `Онлайн · ${r.ping} мс`;
       }
     } else {
+      serverOnline = false; // ТЗ 3.4
       dot.className = 'sv-dot offline';
       txt.className = 'sv-status-txt offline';
       const tabDotOff = $('sv-tab-dot-' + currentServer);
@@ -456,10 +471,12 @@ async function pingServer() {
       txt.textContent = 'Сервер недоступен';
     }
   } catch {
+    serverOnline = false; // ТЗ 3.4: ошибка проверки = недоступен, кнопку не разблокируем
     dot.className = 'sv-dot offline';
     txt.className = 'sv-status-txt offline';
     txt.textContent = 'Ошибка проверки';
   }
+  updatePlayBtn(); // ТЗ 3.4: пересчитываем доступность кнопки ЗАПУСТИТЬ при каждом опросе
 }
 
 
@@ -531,7 +548,12 @@ async function loadNews() {
     list.innerHTML = '<div style="color:var(--muted);font-family:\'Share Tech Mono\',monospace;font-size:12px">// Новостей нет</div>';
     return;
   }
-  items.forEach(it => {
+  // Сортируем от новых к старым
+  const sorted = [...items].sort((a, b) => {
+    const da = new Date(a.date || 0), db = new Date(b.date || 0);
+    return db - da;
+  });
+  sorted.forEach(it => {
     const d = document.createElement('div');
     d.className = 'nw-card';
     d.innerHTML = `<div class="nw-date">// ${e(it.date)}</div><div class="nw-title">${e(it.title)}</div><div class="nw-body">${e(it.body)}</div>`;
@@ -651,3 +673,210 @@ function showRamSaved() {
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3000);
 }
+
+// ─── APPEARANCE TAB (скин + Modrinth) ─────────────────────────────────────────
+let appearanceInited = false;
+let mrCurrentType = 'shader';
+let mrSearchTimeout = null;
+
+async function initAppearanceTab() {
+  if (appearanceInited) {
+    refreshInstalledList();
+    return;
+  }
+  appearanceInited = true;
+
+  // ── Кастомный скин ──
+  await refreshSkinPreview();
+
+  $('btn-skin-upload').onclick = async () => {
+    const r = await api.skinUpload();
+    if (r.ok) {
+      showSkinSaved('✓ Скин загружен');
+      await refreshSkinPreview();
+      // Обновляем и аватарку в сайдбаре
+      if (currentNick) updatePlayerCard(currentNick);
+    } else if (r.error) {
+      showSkinSaved('✗ ' + r.error, true);
+    }
+  };
+
+  $('btn-skin-reset').onclick = async () => {
+    await api.skinReset();
+    showSkinSaved('✓ Сброшено — используется скин с сервера');
+    await refreshSkinPreview();
+    if (currentNick) updatePlayerCard(currentNick);
+  };
+
+  // ── Переключатель Шейдеры / Ресурспаки ──
+  $('mr-tab-shader').onclick = () => switchMrType('shader');
+  $('mr-tab-rp').onclick     = () => switchMrType('resourcepack');
+
+  // ── Поиск с debounce ──
+  $('mr-search').addEventListener('input', () => {
+    clearTimeout(mrSearchTimeout);
+    mrSearchTimeout = setTimeout(() => doMrSearch($('mr-search').value), 400);
+  });
+
+  // ── Прогресс скачивания ──
+  api.onModrinthDlProg(({ filename, pct }) => {
+    const btn = document.querySelector(`[data-filename="${CSS.escape(filename)}"]`);
+    if (btn) btn.textContent = `${pct}%`;
+  });
+
+  // Первая загрузка
+  doMrSearch('');
+  refreshInstalledList();
+}
+
+function switchMrType(type) {
+  mrCurrentType = type;
+  $('mr-tab-shader').classList.toggle('on', type === 'shader');
+  $('mr-tab-rp').classList.toggle('on', type === 'resourcepack');
+  doMrSearch($('mr-search').value);
+  refreshInstalledList();
+}
+
+async function refreshSkinPreview() {
+  const skinDef = $('av-skin-default');
+  const canvas  = $('av-skin-canvas');
+  const status  = $('av-skin-status');
+
+  if (!currentNick) return;
+  const { skinUrl, isCustom } = await api.skinGet(currentNick);
+
+  status.textContent = isCustom
+    ? '📌 Используется свой скин'
+    : (skinUrl ? '🌐 Используется скин с сервера' : '— Скин не задан');
+
+  if (skinDef) { skinDef.textContent = (currentNick[0]||'?').toUpperCase(); skinDef.style.display = 'flex'; }
+  if (canvas) canvas.style.display = 'none';
+
+  if (!skinUrl || !canvas) return;
+
+  const img = new Image();
+  img.onload = () => {
+    try {
+      // ТЗ 2.3: нативный drawImage вместо попиксельного цикла.
+      // SIZE должен точно совпадать с CSS-размером canvas — задаём явно
+      // (родительский .sb-skin контейнер здесь 48px, а не общий 64px)
+      const SIZE = 48;
+      canvas.width  = SIZE;
+      canvas.height = SIZE;
+      canvas.style.width  = SIZE + 'px';
+      canvas.style.height = SIZE + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(img, 8,  8, 8, 8, 0, 0, SIZE, SIZE); // лицо
+      ctx.drawImage(img, 40, 8, 8, 8, 0, 0, SIZE, SIZE); // оверлей/шлем
+
+      canvas.style.display = 'block';
+      if (skinDef) skinDef.style.display = 'none';
+    } catch {}
+  };
+  img.src = skinUrl;
+}
+
+function showSkinSaved(text, isErr = false) {
+  const el = $('skin-saved');
+  el.textContent = text;
+  el.style.color = isErr ? 'var(--p)' : 'var(--ok)';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+async function doMrSearch(query) {
+  const results = $('mr-results');
+  results.innerHTML = '<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:var(--muted)">Ищу...</div>';
+
+  const r = await api.modrinthSearch({ query, type: mrCurrentType, limit: 15 });
+  if (!r.ok || !r.hits?.length) {
+    results.innerHTML = '<div style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:var(--muted)">Ничего не найдено</div>';
+    return;
+  }
+
+  results.innerHTML = '';
+  r.hits.forEach(hit => {
+    const card = document.createElement('div');
+    card.className = 'mr-card';
+    card.innerHTML = `
+      <img class="mr-icon" src="${hit.iconUrl || ''}" onerror="this.style.visibility='hidden'">
+      <div class="mr-info">
+        <div class="mr-title">${escapeHtml(hit.title)}</div>
+        <div class="mr-desc">${escapeHtml(hit.description || '')} · ${formatDownloads(hit.downloads)} загрузок</div>
+      </div>
+      <button class="mr-dl-btn" data-id="${hit.id}">⬇ Скачать</button>
+    `;
+    card.querySelector('.mr-dl-btn').onclick = (e) => downloadMrProject(hit.id, e.target);
+    results.appendChild(card);
+  });
+}
+
+async function downloadMrProject(projectId, btnEl) {
+  btnEl.disabled = true;
+  btnEl.textContent = '...';
+
+  const vr = await api.modrinthVersions({ projectId });
+  if (!vr.ok || !vr.versions?.length) {
+    btnEl.textContent = '✗ Нет версий';
+    setTimeout(() => { btnEl.textContent = '⬇ Скачать'; btnEl.disabled = false; }, 2000);
+    return;
+  }
+
+  // Берём самую новую версию, primary файл (или первый файл)
+  const version = vr.versions[0];
+  const file = version.files.find(f => f.primary) || version.files[0];
+  if (!file) {
+    btnEl.textContent = '✗ Нет файла';
+    return;
+  }
+
+  btnEl.setAttribute('data-filename', file.filename);
+  btnEl.textContent = '0%';
+
+  const r = await api.modrinthDownload({ url: file.url, filename: file.filename, type: mrCurrentType });
+  if (r.ok) {
+    btnEl.textContent = '✓ Установлено';
+    refreshInstalledList();
+  } else {
+    btnEl.textContent = '✗ Ошибка';
+    setTimeout(() => { btnEl.textContent = '⬇ Скачать'; btnEl.disabled = false; }, 2000);
+  }
+}
+
+async function refreshInstalledList() {
+  const list = $('mr-installed');
+  const r = await api.modrinthInstalled({ type: mrCurrentType });
+  if (!r.ok || !r.files?.length) {
+    list.innerHTML = `<div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">Ничего не установлено</div>`;
+    return;
+  }
+  list.innerHTML = '';
+  r.files.forEach(filename => {
+    const item = document.createElement('div');
+    item.className = 'mr-installed-item';
+    item.innerHTML = `<span>${escapeHtml(filename)}</span><span class="mr-remove-btn">✕</span>`;
+    item.querySelector('.mr-remove-btn').onclick = async () => {
+      await api.modrinthRemove({ filename, type: mrCurrentType });
+      refreshInstalledList();
+    };
+    list.appendChild(item);
+  });
+}
+
+function formatDownloads(n) {
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+  return String(n || 0);
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// ─── ТЗ 2.1: CSP compliance — все обработчики вынесены сюда, без inline onclick ──
+document.getElementById('sv-tab-0')?.addEventListener('click', () => selectServer(0));
