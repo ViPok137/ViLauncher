@@ -1,0 +1,18 @@
+[package]
+name = "vilauncher-manifest"
+version = "0.5.0"
+edition = "2021"
+rust-version = "1.75"
+description = "ViLauncher: считает SHA-1 файлов и подстраивает manifest.json / hashes.json"
+
+[[bin]]
+name = "vilauncher-manifest"
+path = "src/main.rs"
+
+[dependencies]
+sha1       = "0.10"
+hex        = "0.4"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+tempfile = "3"

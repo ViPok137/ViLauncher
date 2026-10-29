@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "create",
+      "name": "Create",
+      "description": "Create + Aeronautics: механизмы, поезда и небо",
+      "icon": "⚙",
+      "mcVersion": "1.21.1",
+      "loader": "neoforge",
+      "type": "modded",
+      "instanceId": "create",
+      "address": "subjects-emirates.gl.joinmc.link:25565",
+      "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main",
+      "active": true,
+      "subscription": false,
+      "order": 1
+    },
+    {
+      "id": "colonization",
+      "name": "Колонизация",
+      "description": "MineColonies и средневековье",
+      "icon": "🏰",
+      "mcVersion": "1.20.1",
+      "loader": "forge",
+      "type": "modded",
+      "instanceId": "colonization",
+      "address": "",
+      "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers/colonization",
+      "active": false,
+      "subscription": false,
+      "order": 2
+    },
+    {
+      "id": "infection",
+      "name": "Заражение",
+      "description": "Скалк, плоть и древние растения",
+      "icon": "☣",
+      "mcVersion": "1.21.1",
+      "loader": "neoforge",
+      "type": "modded",
+      "instanceId": "infection",
+      "address": "",
+      "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers/infection",
+      "active": false,
+      "subscription": false,
+      "order": 3
+    },
+    {
+      "id": "vanilla",
+      "name": "Ваниль",
+      "description": "Закрытая ваниль: всегда последняя версия Minecraft, без модов",
+      "icon": "🌿",
+      "mcVersion": "latest",
+      "type": "vanilla",
+      "instanceId": "vanilla",
+      "address": "",
+      "active": false,
+      "subscription": true,
+      "order": 4
+    }
+  ]
+}

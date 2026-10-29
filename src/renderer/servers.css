@@ -1,0 +1,49 @@
+/* Мультисерверный интерфейс: карточки серверов, статусы, бейджи. Тёмная тема лаунчера (переменные из index.html). */
+
+.sv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:16px}
+
+.svc{position:relative;text-align:left;cursor:pointer;color:var(--text);font:inherit;
+  display:flex;flex-direction:column;gap:6px;padding:14px 16px 12px;border-radius:12px;
+  border:1px solid var(--border);
+  background:linear-gradient(160deg,rgba(0,245,255,.06),rgba(8,12,24,.55) 55%);
+  transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.svc:hover{transform:translateY(-2px);border-color:rgba(0,245,255,.55);box-shadow:0 6px 22px rgba(0,0,0,.35)}
+.svc:focus-visible{outline:2px solid var(--c);outline-offset:2px}
+.svc.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c) inset,0 0 22px rgba(0,245,255,.22);
+  background:linear-gradient(160deg,rgba(0,245,255,.16),rgba(8,12,24,.6) 60%)}
+.svc.off{opacity:.62;filter:saturate(.35)}
+.svc.off:hover{opacity:.85}
+.svc.off.on{opacity:.92;filter:saturate(.6)}
+
+.svc-top{display:flex;align-items:center;gap:10px}
+.svc-ic{font-size:20px;line-height:1;width:32px;height:32px;display:grid;place-items:center;border-radius:8px;
+  background:rgba(0,245,255,.1);border:1px solid var(--border)}
+.svc-name{font-family:'Orbitron',monospace;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--text)}
+.svc-ver{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--c)}
+.svc-desc{font-size:12px;color:var(--muted);line-height:1.45;min-height:34px}
+.svc-foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:2px;min-height:22px}
+
+.svc-badge{font-family:'Orbitron',monospace;font-size:8px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+  padding:3px 8px;border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+.svc-badge.soon{color:var(--g);border-color:rgba(255,215,0,.45);background:rgba(255,215,0,.08)}
+.svc-badge.sub{color:var(--p);border-color:rgba(255,45,120,.45);background:rgba(255,45,120,.08)}
+.svc-badge.ok{color:var(--ok);border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.07)}
+
+.svc-ping{margin-left:auto;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.svc-ping i{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block}
+.svc-ping.on{color:var(--ok)} .svc-ping.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.svc-ping.off{color:var(--p)}  .svc-ping.off i{background:var(--p)}
+
+/* карточка выбранного сервера */
+.sv-name{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sv-state{font-family:'Orbitron',monospace;font-size:8px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
+  padding:3px 9px;border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+.sv-state:empty{display:none}
+.sv-state.ready{color:var(--ok);border-color:rgba(0,255,136,.45);background:rgba(0,255,136,.08)}
+.sv-state.busy{color:var(--c);border-color:rgba(0,245,255,.5);background:rgba(0,245,255,.08)}
+.sv-state.need{color:var(--g);border-color:rgba(255,215,0,.5);background:rgba(255,215,0,.08)}
+.sv-state.off{color:var(--muted);border-color:var(--border);background:rgba(255,255,255,.04)}
+.sv-state.err{color:var(--p);border-color:rgba(255,45,120,.5);background:rgba(255,45,120,.08)}
+.sv-inactive{margin:12px 0;padding:12px 14px;border-radius:10px;border:1px dashed rgba(255,215,0,.45);
+  background:rgba(255,215,0,.06);color:var(--g);font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.5}
+.btn-launch:disabled{cursor:not-allowed}

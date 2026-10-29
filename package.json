@@ -1,0 +1,24 @@
+{
+  "name": "vilauncher",
+  "version": "0.5.0",
+  "private": true,
+  "description": "ViLauncher — Minecraft-лаунчер (Tauri 2 + Rust)",
+  "scripts": {
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test:rust": "cargo test -p vilauncher-core -p vilauncher-manifest",
+    "test:ui": "node --test \"tests/ui/*.test.mjs\"",
+    "check:config": "node scripts/check-config.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/orbitron": "^5.1.0",
+    "@fontsource/rajdhani": "^5.1.0",
+    "@fontsource/share-tech-mono": "^5.1.0",
+    "@tauri-apps/api": "~2.12.0",
+    "@tauri-apps/cli": "~2.12.0",
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0"
+  }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "vilauncher"
+version = "0.5.0"
+edition = "2021"
+rust-version = "1.77"
+description = "ViPok Launcher (Tauri backend)"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri           = { version = "2", features = ["tray-icon"] }
+tauri-plugin-updater = "2"
+vilauncher-core = { path = "../crates/vilauncher-core" }
+serde           = { version = "1", features = ["derive"] }
+serde_json      = "1"
+tokio           = { version = "1", features = ["fs", "sync", "time", "process"] }
+sysinfo         = { version = "0.33", default-features = false, features = ["system"] }
+open            = "5"
+rfd             = { version = "0.15", default-features = false, features = ["gtk3"] }
+log             = { version = "0.4", features = ["std"] }
