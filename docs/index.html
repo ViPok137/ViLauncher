@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ViLauncher — лаунчер для серверов ViPok</title>
+  <meta name="description" content="ViLauncher — быстрый Minecraft-лаунчер для серверов ViPok: Create, Колонизация, Заражение и ваниль. Умная загрузка модов, автообновление, настройки прямо в лаунчере. Windows 10/11.">
+  <meta name="theme-color" content="#0a0e13">
+  <meta name="color-scheme" content="dark">
+  <!-- Строгий CSP: только свои файлы; наружу сайт ходит лишь за новостями и версией релиза (GitHub). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ViLauncher — лаунчер для серверов ViPok">
+  <meta property="og:description" content="Create, Колонизация, Заражение и ваниль в одном лаунчере. Умная загрузка модов и автообновление.">
+  <meta property="og:image" content="https://vipok137.github.io/ViLauncher/assets/icon.png">
+  <meta property="og:locale" content="ru_RU">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Перейти к содержимому</a>
+
+  <header class="top">
+    <div class="wrap top__in">
+      <a class="brand" href="#top" aria-label="ViLauncher — на главную">
+        <img class="brand__ic" src="assets/icon.png" alt="" width="32" height="32">
+        <span class="brand__name">Vi<b>Launcher</b></span>
+      </a>
+      <nav class="nav" aria-label="Разделы страницы">
+        <a href="#download">Скачать</a>
+        <a href="#features">Возможности</a>
+        <a href="#servers">Серверы</a>
+        <a href="#news">Новости</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero__bg" aria-hidden="true"></div>
+      <div class="wrap hero__in">
+        <div class="hero__text">
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Minecraft-лаунчер проекта ViPok</p>
+          <h1 id="hero-title">ViLauncher</h1>
+          <p class="lead">Лаунчер для серверов ViPok: <strong>Create</strong>, а в перспективе — <strong>Колонизация</strong>, <strong>Заражение</strong> и закрытая ваниль.</p>
+          <div class="cta">
+            <a class="btn btn--primary" id="dl-main" href="https://github.com/ViPok137/ViLauncher/releases/latest" rel="noopener">
+              <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Скачать для Windows
+              <small>Download</small>
+            </a>
+            <a class="btn btn--ghost" href="https://github.com/ViPok137/ViLauncher" rel="noopener">
+              <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z" fill="currentColor"/></svg>
+              GitHub
+            </a>
+          </div>
+          <ul class="meta" aria-label="Коротко о лаунчере">
+            <li><span class="chip chip--ver" id="ver-badge">v0.5.0</span></li>
+            <li>Windows 10/11 · x64</li>
+            <li>Бесплатно, без регистрации</li>
+          </ul>
+        </div>
+
+        <!-- Макет окна лаунчера (чистый CSS, не скриншот) -->
+        <div class="mock" aria-hidden="true">
+          <div class="mock__bar"><i></i><i></i><i></i><span>ViLauncher</span></div>
+          <div class="mock__body">
+            <div class="mock__row">
+              <div class="mock__card mock__card--on">
+                <b>CREATE</b><span>1.21.1 · NeoForge</span>
+                <em class="mock__badge mock__badge--ok">установлен</em>
+              </div>
+              <div class="mock__card mock__card--off">
+                <b>КОЛОНИЗАЦИЯ</b><span>1.20.1</span>
+                <em class="mock__badge">скоро</em>
+              </div>
+              <div class="mock__card mock__card--off">
+                <b>ЗАРАЖЕНИЕ</b><span>1.21.1 · NeoForge</span>
+                <em class="mock__badge">скоро</em>
+              </div>
+            </div>
+            <div class="mock__prog"><div class="mock__fill"></div></div>
+            <div class="mock__play">ИГРАТЬ</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СКАЧИВАНИЕ -->
+    <section class="sec sec--alt" id="download" aria-labelledby="dl-title">
+      <div class="wrap">
+        <h2 id="dl-title">Скачать <span class="hl">ViLauncher</span></h2>
+        <p class="sec__lead">Установка занимает пару минут и не требует прав администратора.</p>
+
+        <div class="dl">
+          <ol class="steps">
+            <li><b>Скачай установщик</b><span>Кнопка справа ведёт на последний релиз — файл <code id="setup-name">ViLauncher_0.5.0_x64-setup.exe</code>.</span></li>
+            <li><b>Запусти и установи</b><span>Лаунчер ставится в профиль пользователя. Если в системе нет WebView2, он подтянется автоматически.</span></li>
+            <li><b>Введи ник и нажми «Установить»</b><span>Лаунчер сам скачает нужную Java, Minecraft и моды выбранного сервера. Дальше — «Играть».</span></li>
+          </ol>
+
+          <aside class="dl__box" aria-label="Загрузка">
+            <a class="btn btn--primary btn--xl" id="dl-box" href="https://github.com/ViPok137/ViLauncher/releases/latest" rel="noopener">
+              <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Скачать для Windows
+              <small>Download · <span id="dl-ver">v0.5.0</span></small>
+            </a>
+            <ul class="req">
+              <li>Windows 10 или 11, 64-бит</li>
+              <li>~1 ГБ свободного места на сервер</li>
+              <li>WebView2 — подтянется при необходимости</li>
+            </ul>
+            <p class="note"><a href="https://github.com/ViPok137/ViLauncher/releases" rel="noopener">Все релизы и предыдущие версии →</a></p>
+          </aside>
+        </div>
+
+        <div class="callout" role="note">
+          <h3>Windows показывает предупреждение SmartScreen?</h3>
+          <p>Установщик не подписан платным сертификатом Authenticode, поэтому при первом запуске Windows может написать «Система Windows защитила ваш компьютер». Это нормально для независимых проектов: нажми <b>«Подробнее» → «Выполнить в любом случае»</b>. Исходный код открыт, а обновления самого лаунчера подписаны ключом проекта и проверяются перед установкой.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ВОЗМОЖНОСТИ -->
+    <section class="sec" id="features" aria-labelledby="ft-title">
+      <div class="wrap">
+        <h2 id="ft-title">Что умеет <span class="hl">лаунчер</span></h2>
+        <ul class="grid grid--3 cards">
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">⚙</span>
+            <h3>Нативное ядро Rust + Tauri 2</h3>
+            <p>Лёгкий и быстрый: без Electron и тяжёлого браузера внутри. Мало памяти, быстрый старт, надёжная загрузка файлов.</p>
+          </li>
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">🗂</span>
+            <h3>Несколько серверов, у каждого свой instance</h3>
+            <p>У каждого сервера отдельный клиент: свои моды, настройки и версия Minecraft. Серверы не мешают друг другу.</p>
+          </li>
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">⬆</span>
+            <h3>Автообновление лаунчера</h3>
+            <p>Новые версии приходят сами. Обновления подписаны ключом проекта, лаунчер проверяет подпись перед установкой.</p>
+          </li>
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">🎛</span>
+            <h3>Настройки Minecraft и модов</h3>
+            <p>FOV, дальность прорисовки, звук, управление и конфиги модов — прямо в лаунчере, с проверкой и откатом к значениям по умолчанию.</p>
+          </li>
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">👤</span>
+            <h3>Вход по нику</h3>
+            <p>Аккаунт Microsoft не обязателен: достаточно ника. Один ник на все серверы лаунчера.</p>
+          </li>
+          <li class="card">
+            <span class="card__ic" aria-hidden="true">⚡</span>
+            <h3>Умная загрузка модов</h3>
+            <p>Скачиваются только нужные файлы: лаунчер сверяет контрольные суммы и докачивает лишь изменившееся, а не весь модпак.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- СЕРВЕРЫ -->
+    <section class="sec sec--alt" id="servers" aria-labelledby="sv-title">
+      <div class="wrap">
+        <h2 id="sv-title">Серверы <span class="hl">ViPok</span></h2>
+        <p class="sec__lead">Адрес сервера подставляет сам лаунчер — вводить IP вручную не нужно.</p>
+        <ul class="grid grid--4 servers">
+          <li class="srv srv--on">
+            <div class="srv__top"><span class="srv__ic" aria-hidden="true">⚙</span><h3>Create + Aeronautics</h3></div>
+            <p class="srv__ver">Minecraft 1.21.1 · NeoForge</p>
+            <p>Механизмы, поезда и воздухоплавание. Основной сервер проекта.</p>
+            <span class="badge badge--ok">Доступен</span>
+          </li>
+          <li class="srv srv--off">
+            <div class="srv__top"><span class="srv__ic" aria-hidden="true">🏰</span><h3>Колонизация</h3></div>
+            <p class="srv__ver">Minecraft 1.20.1</p>
+            <p>MineColonies и средневековье: строй города и развивай поселение.</p>
+            <span class="badge badge--soon">Скоро</span>
+          </li>
+          <li class="srv srv--off">
+            <div class="srv__top"><span class="srv__ic" aria-hidden="true">☣</span><h3>Заражение</h3></div>
+            <p class="srv__ver">Minecraft 1.21.1 · NeoForge</p>
+            <p>Скалк, плоть и древние растения. Выживание в мире, который меняется.</p>
+            <span class="badge badge--soon">Скоро</span>
+          </li>
+          <li class="srv srv--off">
+            <div class="srv__top"><span class="srv__ic" aria-hidden="true">🌿</span><h3>Ваниль</h3></div>
+            <p class="srv__ver">Всегда последняя версия</p>
+            <p>Закрытая ваниль без модов. Доступ по подписке (проверяет сервер).</p>
+            <span class="badge badge--soon">Скоро</span>
+            <span class="badge badge--sub">по подписке</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- НОВОСТИ -->
+    <section class="sec" id="news" aria-labelledby="nw-title">
+      <div class="wrap">
+        <h2 id="nw-title">Новости <span class="hl">проекта</span></h2>
+        <p class="sec__lead" id="news-status" aria-live="polite">Свежие записи подгружаются из репозитория. Если связи нет — ниже последние известные новости.</p>
+        <ul class="grid grid--3 news" id="news-list">
+          <!-- Запасные карточки (показываются без JS и при сбое сети); main.js заменяет их свежими из NEWS.json -->
+          <li class="card news__item">
+            <p class="news__date">Версия 0.5.0</p>
+            <h3>Новый лаунчер на Rust и Tauri 2</h3>
+            <p>Быстрее и легче прежнего: умная загрузка модов, изолированная Java и подписанные автообновления.</p>
+          </li>
+          <li class="card news__item">
+            <p class="news__date">Серверы</p>
+            <h3>Create + Aeronautics — на 1.21.1</h3>
+            <p>Основной сервер работает на Minecraft 1.21.1 с NeoForge. Модпак обновляется автоматически при запуске.</p>
+          </li>
+          <li class="card news__item">
+            <p class="news__date">Скоро</p>
+            <h3>Колонизация, Заражение и ваниль</h3>
+            <p>Карточки серверов уже в лаунчере — доступ откроем, когда миры будут готовы.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot__in">
+      <nav class="foot__links" aria-label="Ссылки проекта">
+        <a href="https://github.com/ViPok137/ViLauncher/releases" rel="noopener" id="f-releases">Releases</a>
+        <a href="https://github.com/ViPok137/ViLauncher/issues" rel="noopener" id="f-issues">Issues</a>
+        <a href="https://github.com/ViPok137/ViLauncher/blob/main/Privacy%20Policy.md" rel="noopener" id="f-privacy">Privacy Policy</a>
+        <a href="https://github.com/ViPok137/ViLauncher/blob/main/Terms%20of%20Service.md" rel="noopener" id="f-terms">Terms of Service</a>
+        <a href="https://github.com/ViPok137/ViLauncher" rel="noopener" id="f-repo">GitHub</a>
+      </nav>
+      <p class="foot__legal">Неофициальный проект, не связан с Mojang Studios и Microsoft. Minecraft — торговая марка Mojang Studios.</p>
+      <p class="foot__legal">Сайт не собирает личные данные и не использует аналитику.</p>
+      <p class="foot__copy">© <span id="year">2026</span> ViPok / ViLauncher</p>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
