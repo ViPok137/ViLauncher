@@ -51,7 +51,7 @@
       "name": "Ваниль",
       "description": "Закрытая ваниль: всегда последняя версия Minecraft, без модов",
       "icon": "🌿",
-      "status": "coming",
+      "status": "coming 15.12.2026",
       "mcVersion": "latest",
       "type": "vanilla",
       "instanceId": "vanilla",
