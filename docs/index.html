@@ -9,11 +9,22 @@
   <meta name="color-scheme" content="dark">
   <!-- Строгий CSP: только свои файлы; наружу сайт ходит лишь за новостями и версией релиза (GitHub). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+  <link rel="canonical" href="https://vipok137.github.io/ViLauncher/">
   <meta property="og:type" content="website">
+  <meta property="og:url" content="https://vipok137.github.io/ViLauncher/">
+  <meta property="og:site_name" content="ViLauncher">
   <meta property="og:title" content="ViLauncher — лаунчер для серверов ViPok">
   <meta property="og:description" content="Create, Колонизация, Заражение и ваниль в одном лаунчере. Умная загрузка модов и автообновление.">
-  <meta property="og:image" content="https://vipok137.github.io/ViLauncher/assets/icon.png">
+  <meta property="og:image" content="https://vipok137.github.io/ViLauncher/assets/og-cover.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ViLauncher — лаунчер для серверов ViPok">
   <meta property="og:locale" content="ru_RU">
+  <!-- Карточка для ссылок в соцсетях. Аккаунта проекта в X/Twitter нет, поэтому twitter:site и twitter:creator не задаются. -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ViLauncher — лаунчер для серверов ViPok">
+  <meta name="twitter:description" content="Create, Колонизация, Заражение и ваниль в одном лаунчере. Умная загрузка модов и автообновление.">
+  <meta name="twitter:image" content="https://vipok137.github.io/ViLauncher/assets/og-cover.png">
   <link rel="icon" type="image/png" href="assets/icon.png">
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -44,6 +55,7 @@
           <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Minecraft-лаунчер проекта ViPok</p>
           <h1 id="hero-title">ViLauncher</h1>
           <p class="lead">Лаунчер для серверов ViPok: <strong>Create</strong>, а в перспективе — <strong>Колонизация</strong>, <strong>Заражение</strong> и закрытая ваниль.</p>
+          <p class="hero__note">Достаточно ника: аккаунт Microsoft для игры не нужен.</p>
           <div class="cta">
             <a class="btn btn--primary" id="dl-main" href="https://github.com/ViPok137/ViLauncher/releases/latest" rel="noopener">
               <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -119,6 +131,21 @@
           <h3>Windows показывает предупреждение SmartScreen?</h3>
           <p>Установщик не подписан платным сертификатом Authenticode, поэтому при первом запуске Windows может написать «Система Windows защитила ваш компьютер». Это нормально для независимых проектов: нажми <b>«Подробнее» → «Выполнить в любом случае»</b>. Исходный код открыт, а обновления самого лаунчера подписаны ключом проекта и проверяются перед установкой.</p>
         </div>
+      </div>
+    </section>
+
+    <!-- СКРИНШОТЫ: блок скрыт, пока в docs/assets нет файлов screenshot-1.png / screenshot-2.png (main.js проверяет их наличие) -->
+    <section class="sec shots" id="shots" aria-labelledby="sh-title" hidden>
+      <div class="wrap">
+        <h2 id="sh-title">Как это <span class="hl">выглядит</span></h2>
+        <ul class="grid grid--2 shots__list" id="shots-list">
+          <li class="shots__item" id="shot-1" hidden>
+            <figure><img id="shot-1-img" alt="Скриншот лаунчера: главное окно" loading="lazy" decoding="async"><figcaption>Главное окно</figcaption></figure>
+          </li>
+          <li class="shots__item" id="shot-2" hidden>
+            <figure><img id="shot-2-img" alt="Скриншот лаунчера: настройки" loading="lazy" decoding="async"><figcaption>Настройки</figcaption></figure>
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -237,6 +264,29 @@
       <p class="foot__copy">© <span id="year">2026</span> ViPok / ViLauncher</p>
     </div>
   </footer>
+
+  <dialog class="mdl" id="srv-modal" aria-modal="true" aria-labelledby="mdl-title">
+    <div class="mdl__panel">
+      <button class="mdl__x" type="button" id="mdl-close" aria-label="Закрыть окно">×</button>
+      <div class="mdl__view" id="mdl-view">
+        <div class="mdl__art" aria-hidden="true"><span class="mdl__ic" id="mdl-icon"></span></div>
+        <div class="mdl__info">
+          <p class="mdl__ver" id="mdl-ver"></p>
+          <h2 id="mdl-title"></h2>
+          <p class="mdl__desc" id="mdl-desc"></p>
+          <p class="mdl__badges" id="mdl-badges"></p>
+          <p class="mdl__hint" id="mdl-hint"></p>
+          <a class="btn btn--primary mdl__cta" id="mdl-cta" href="#download">К скачиванию</a>
+        </div>
+      </div>
+      <div class="mdl__nav">
+        <button class="mdl__btn" type="button" id="mdl-prev" aria-label="Предыдущий сервер">‹</button>
+        <div class="mdl__dots" id="mdl-dots" role="group" aria-label="Выбор сервера"></div>
+        <button class="mdl__btn" type="button" id="mdl-next" aria-label="Следующий сервер">›</button>
+      </div>
+      <p class="mdl__count" id="mdl-count" aria-live="polite"></p>
+    </div>
+  </dialog>
 
   <script src="js/main.js"></script>
 </body>
