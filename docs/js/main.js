@@ -2,7 +2,7 @@
 /* ViLauncher — сайт-витрина. Чистый JavaScript, без зависимостей, без аналитики и cookies. */
 
 /* ═══════════════════════════ НАСТРОЙКИ (меняются здесь) ═══════════════════════════ */
-const VERSION = '0.5.0';   // ← Подставь актуальный тег релиза БЕЗ «v» (например '0.5.1').
+const VERSION = '0.0.0';   // ← Подставь актуальный тег релиза БЕЗ «v» (например '0.5.1').
                            //   Если AUTO_VERSION = true, версия и ссылка подтянутся из GitHub сами; константа — запасной вариант.
 const REPO_URL = 'https://github.com/ViPok137/ViLauncher';
 const SETUP_NAME = 'ViLauncher_{version}_x64-setup.exe'; // шаблон имени установщика Tauri/NSIS
@@ -90,6 +90,20 @@ function newsId(n) {
   return null;
 }
 
+function initHeroShot() {
+  const btn = document.getElementById('hero-shot-open');
+  const dlg = document.getElementById('shot-dialog');
+  if (!btn || !dlg || typeof dlg.showModal !== 'function') return;
+
+  btn.addEventListener('click', () => dlg.showModal());
+
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) dlg.close(); // клик по фону/полю dialog
+  });
+}
+
+// в init():
+initHeroShot();
 /**
  * Принимает массив записей или объект { news: [...] }; всё, что не строка, отбрасывается.
  * Порядок «сначала новые»: записи с числовым id — по убыванию id; записи без id — в обратном порядке файла
@@ -209,6 +223,18 @@ function versionLine(s) {
   return parts.join(' · ');
 }
 
+/** releaseAt (ISO 8601 с часовым поясом) → «Откроется 1 декабря, 18:00 GMT+3» в часовом поясе посетителя.
+ *  Только для status: coming; без пояса, с неверной датой или уже прошедшая дата — ничего не показываем. */
+function releaseText(v) {
+  if (typeof v !== 'string' || !/(Z|[+-]\d{2}:?\d{2})$/i.test(v.trim())) return '';
+  const t = Date.parse(v.trim());
+  if (!Number.isFinite(t) || t <= Date.now()) return '';
+  const d = new Date(t);
+  const opts = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  try { return 'Откроется ' + new Intl.DateTimeFormat('ru-RU', opts).format(d); } catch (e) { return ''; }
+}
+
 /** Принимает массив или { version, servers: [...] }; мусорные записи отбрасываются, порядок — по order (нет order → в конец, по порядку файла). */
 function normalizeServers(data) {
   const list = Array.isArray(data) ? data : (data && Array.isArray(data.servers) ? data.servers : []);
@@ -235,6 +261,7 @@ function normalizeServers(data) {
       name: clip(s.name, 60),
       version: versionLine(s),
       description: clip(typeof s.description === 'string' ? s.description : '', 200),
+      release: status === 'coming' ? releaseText(s.releaseAt) : '',                       // необязательное поле releaseAt
       message: clip(typeof s.statusMessage === 'string' ? s.statusMessage : '', 160),   // необязательное поле на будущее
       glyph, iconUrl: safeIconUrl(s.iconUrl),
       subscription: s.subscription === true,
@@ -264,6 +291,7 @@ function buildServerCard(s) {
   const ver = document.createElement('p'); ver.className = 'srv__ver'; ver.textContent = s.version;
   li.append(top, ver);
   if (s.description) { const p = document.createElement('p'); p.textContent = s.description; li.append(p); }
+  if (s.release) { const r = document.createElement('p'); r.className = 'srv__msg'; r.textContent = s.release; li.append(r); }
   if (s.message) { const m = document.createElement('p'); m.className = 'srv__msg'; m.textContent = s.message; li.append(m); }
 
   const badges = document.createElement('div'); badges.className = 'srv__badges';
@@ -313,7 +341,7 @@ function readServerCard(card) {
     title: text('h3'),
     version: text('.srv__ver'),
     description: text('p:not(.srv__ver):not(.srv__msg)'),
-    message: text('.srv__msg'),
+    message: [...card.querySelectorAll('.srv__msg')].map((x) => x.textContent.trim().replace(/[.!]+$/, '')).filter(Boolean).map((t) => t + '.').join(' '),
     iconUrl: card.dataset.iconUrl || '',
     active: card.classList.contains('srv--on'),
     reason: card.dataset.reason || (card.classList.contains('srv--on') ? 'open' : 'coming'),
