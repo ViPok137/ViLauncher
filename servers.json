@@ -56,7 +56,7 @@
       "type": "vanilla",
       "instanceId": "vanilla",
       "address": "",
-      "subscription": true,
+      "subscription": false,
       "order": 4
     }
   ]
