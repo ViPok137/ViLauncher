@@ -97,6 +97,69 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .chip--ver { background: rgba(46, 230, 166, .12); color: var(--accent); border: 1px solid rgba(46, 230, 166, .4); }
 
 /* Макет окна лаунчера */
+.hero__shot {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 16px;
+  overflow: hidden;
+  max-width: 100%;
+}
+.hero__shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+.shot-dialog {
+  border: none;
+  padding: 0;
+  max-width: min(1100px, 94vw);
+  max-height: 92vh;
+  background: transparent;
+}
+.shot-dialog::backdrop {
+  background: rgba(4, 8, 12, .75);
+  backdrop-filter: blur(6px);
+}
+.shot-dialog__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+.shot-dialog__bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.shot-dialog__x {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface, #1a2332);
+  color: #fff;
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+/* плавность, если поддерживается */
+.shot-dialog[open] {
+  animation: shot-in .28s ease;
+}
+@keyframes shot-in {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shot-dialog[open] { animation: none; }
+}
 .mock { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; transform: perspective(1200px) rotateY(-4deg) rotateX(1.5deg); }
 .mock__bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: var(--bg-2); border-bottom: 1px solid var(--line); color: var(--muted); font: 600 .78rem var(--mono); }
 .mock__bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a4a5f; }
