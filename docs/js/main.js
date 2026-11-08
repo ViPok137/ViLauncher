@@ -223,16 +223,43 @@ function versionLine(s) {
   return parts.join(' · ');
 }
 
-/** releaseAt (ISO 8601 с часовым поясом) → «Откроется 1 декабря, 18:00 GMT+3» в часовом поясе посетителя.
- *  Только для status: coming; без пояса, с неверной датой или уже прошедшая дата — ничего не показываем. */
-function releaseText(v) {
-  if (typeof v !== 'string' || !/(Z|[+-]\d{2}:?\d{2})$/i.test(v.trim())) return '';
-  const t = Date.parse(v.trim());
-  if (!Number.isFinite(t) || t <= Date.now()) return '';
-  const d = new Date(t);
-  const opts = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' };
+/** releaseAt (ISO 8601 с часовым поясом) → { text: «Откроется 20 декабря в 10:00», until: мс }.
+ *  Время переводится в часовой пояс посетителя, сам пояс на странице не пишем.
+ *  Только для status: coming; без пояса, с неверной датой или уже прошедшая дата — null. */
+function releaseInfo(v) {
+  if (typeof v !== 'string' || !/(Z|[+-]\d{2}:?\d{2})$/i.test(v.trim())) return null;
+  const until = Date.parse(v.trim());
+  if (!Number.isFinite(until) || until <= Date.now()) return null;
+  const d = new Date(until);
+  const opts = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' };
   if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-  try { return 'Откроется ' + new Intl.DateTimeFormat('ru-RU', opts).format(d); } catch (e) { return ''; }
+  try { return { text: 'Откроется ' + new Intl.DateTimeFormat('ru-RU', opts).format(d), until }; } catch (e) { return null; }
+}
+
+/** «12 д 03:45:10» (дни — только если они есть) */
+function formatLeft(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400);
+  const p = (n) => String(n).padStart(2, '0');
+  return (d ? d + ' д ' : '') + p(Math.floor(t % 86400 / 3600)) + ':' + p(Math.floor(t % 3600 / 60)) + ':' + p(t % 60);
+}
+
+/** Раз в секунду обновляет все таймеры на странице (карточки и окно подробностей); истёкшие убирает. */
+function tickTimers() {
+  const now = Date.now();
+  document.querySelectorAll('[data-until]').forEach((el) => {
+    const left = Number(el.dataset.until) - now;
+    if (!(left > 0)) el.remove();
+    else if (el.classList.contains('badge')) el.textContent = formatLeft(left);
+  });
+}
+
+function timerBadge(until) {
+  const b = document.createElement('span');
+  b.className = 'badge badge--ok badge--timer';
+  b.setAttribute('role', 'timer');
+  b.dataset.until = String(until);
+  b.textContent = formatLeft(until - Date.now());
+  return b;
 }
 
 /** Принимает массив или { version, servers: [...] }; мусорные записи отбрасываются, порядок — по order (нет order → в конец, по порядку файла). */
@@ -261,7 +288,7 @@ function normalizeServers(data) {
       name: clip(s.name, 60),
       version: versionLine(s),
       description: clip(typeof s.description === 'string' ? s.description : '', 200),
-      release: status === 'coming' ? releaseText(s.releaseAt) : '',                       // необязательное поле releaseAt
+      release: status === 'coming' ? releaseInfo(s.releaseAt) : null,                     // необязательное поле releaseAt
       message: clip(typeof s.statusMessage === 'string' ? s.statusMessage : '', 160),   // необязательное поле на будущее
       glyph, iconUrl: safeIconUrl(s.iconUrl),
       subscription: s.subscription === true,
@@ -291,13 +318,14 @@ function buildServerCard(s) {
   const ver = document.createElement('p'); ver.className = 'srv__ver'; ver.textContent = s.version;
   li.append(top, ver);
   if (s.description) { const p = document.createElement('p'); p.textContent = s.description; li.append(p); }
-  if (s.release) { const r = document.createElement('p'); r.className = 'srv__msg'; r.textContent = s.release; li.append(r); }
+  if (s.release) { const r = document.createElement('p'); r.className = 'srv__msg'; r.textContent = s.release.text; r.dataset.until = String(s.release.until); li.append(r); }
   if (s.message) { const m = document.createElement('p'); m.className = 'srv__msg'; m.textContent = s.message; li.append(m); }
 
   const badges = document.createElement('div'); badges.className = 'srv__badges';
   const make = (b) => { const span = document.createElement('span'); span.className = 'badge badge--' + b.kind; span.textContent = b.text; return span; };
   badges.append(make(badgeFor(s.reason)));
   if (s.subscription) badges.append(make({ text: 'по подписке', kind: 'sub' }));
+  if (s.release) badges.append(timerBadge(s.release.until));
   li.append(badges);
   return li;
 }
@@ -347,7 +375,8 @@ function readServerCard(card) {
     reason: card.dataset.reason || (card.classList.contains('srv--on') ? 'open' : 'coming'),
     badges: [...card.querySelectorAll('.badge')].map((b) => ({
       text: b.textContent.trim(),
-      kind: ['ok', 'soon', 'sub'].find((k) => b.classList.contains('badge--' + k)) || 'soon',
+      kind: ['ok', 'soon', 'warn', 'busy', 'off', 'sub'].find((k) => b.classList.contains('badge--' + k)) || 'soon',
+      until: b.dataset.until || '',
     })),
   };
 }
@@ -395,6 +424,7 @@ function initServerModal() {
     $('mdl-hint').textContent = [d.message, HINTS[d.reason] || (d.active ? HINT_ON : HINT_OFF)].filter(Boolean).join(' ');
     view.dataset.state = d.active ? 'on' : 'off';
     $('mdl-badges').replaceChildren(...d.badges.map((b) => {
+      if (b.until) return timerBadge(Number(b.until));   // таймер в окне тоже тикает
       const span = document.createElement('span');
       span.className = 'badge badge--' + b.kind;
       span.textContent = b.text;
@@ -495,6 +525,7 @@ function init() {
   initRelease();
   initNews();
   initScreenshots();
+  setInterval(tickTimers, 1000);
   initServers(initServerModal());   // сначала модалка на запасных карточках из HTML, затем каталог подменяет их и обновляет модалку
 }
 init();

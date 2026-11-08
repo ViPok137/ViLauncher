@@ -244,6 +244,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .srv--off h3 { color: #c9d3de; }
 .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font: 800 .7rem/1.4 var(--font); letter-spacing: .1em; text-transform: uppercase; margin-right: 6px; }
 .badge--ok   { background: rgba(46, 230, 166, .12); color: var(--accent); border: 1px solid rgba(46, 230, 166, .45); }
+.badge--timer { letter-spacing: .04em; text-transform: none; font-variant-numeric: tabular-nums; }
 .badge--soon, .badge--warn { background: rgba(255, 180, 84, .1); color: var(--amber); border: 1px solid rgba(255, 180, 84, .45); }
 .badge--busy { background: rgba(25, 182, 201, .1); color: var(--accent-2); border: 1px solid rgba(25, 182, 201, .45); }
 .badge--off  { background: rgba(154, 168, 184, .08); color: var(--muted); border: 1px solid rgba(154, 168, 184, .4); }
