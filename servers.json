@@ -6,7 +6,7 @@
       "name": "Create",
       "description": "Create + Aeronautics: механизмы, поезда и небо",
       "icon": "⚙",
-      "status": "open",
+      "status": "updating",
       "mcVersion": "1.21.1",
       "loader": "neoforge",
       "type": "modded",
@@ -14,14 +14,15 @@
       "address": "subjects-emirates.gl.joinmc.link:25565",
       "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main",
       "subscription": false,
-      "order": 1
+      "order": 1,
+      "releaseAt": ""
     },
     {
       "id": "colonization",
       "name": "Колонизация",
       "description": "MineColonies и средневековье",
       "icon": "🏰",
-      "status": "updating",
+      "status": "coming",
       "mcVersion": "1.20.1",
       "loader": "forge",
       "type": "modded",
@@ -29,7 +30,8 @@
       "address": "",
       "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers/colonization",
       "subscription": false,
-      "order": 2
+      "order": 2,
+      "releaseAt": ""
     },
     {
       "id": "infection",
@@ -45,7 +47,7 @@
       "manifestUrl": "https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers/infection",
       "subscription": false,
       "order": 3,
-      "releaseAt": "2026-12-20T18:00:00+03:00"
+      "releaseAt": ""
     },
     {
       "id": "vanilla",
@@ -58,7 +60,8 @@
       "instanceId": "vanilla",
       "address": "",
       "subscription": true,
-      "order": 4
+      "order": 4,
+      "releaseAt": "2026-12-20T18:00:00-05:00"
     }
   ]
 }
