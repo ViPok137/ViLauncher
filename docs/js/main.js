@@ -10,7 +10,8 @@ const NEWS_URL = 'https://raw.githubusercontent.com/ViPok137/ViLauncher/main/NEW
 const SERVERS_URL = 'https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers.json';   // каталог серверов (контракт v1)
 const API_LATEST_URL = 'https://api.github.com/repos/ViPok137/ViLauncher/releases/latest';
 const AUTO_VERSION = true;          // false → не обращаться к api.github.com, использовать только константы выше
-const NEWS_LIMIT = 3;               // сколько новостей показывать
+const NEWS_LIMIT = 3;               // сколько новостей показывать карточками в разделе
+const NEWS_MAX = 200;               // сколько записей можно листать в окне (от новых к самым старым)
 const SERVERS_LIMIT = 12;           // больше карточек не рисуем (защита от мусора в JSON)
 const ACCEPT_LEGACY_ACTIVE = true;  // переходный режим: если в записи нет status, но есть старое булево active → open/coming.
                                     //   Когда в servers.json у всех записей появится status — поставь false.
@@ -107,7 +108,7 @@ initHeroShot();
 /**
  * Принимает массив записей или объект { news: [...] }; всё, что не строка, отбрасывается.
  * Порядок «сначала новые»: записи с числовым id — по убыванию id; записи без id — в обратном порядке файла
- * (считаем, что новое дописывают в конец). Затем берётся NEWS_LIMIT первых.
+ * (считаем, что новое дописывают в конец). Возвращаются все записи (до NEWS_MAX): карточки берут первые NEWS_LIMIT, окно листает все.
  */
 function normalizeNews(data) {
   const list = Array.isArray(data) ? data : (data && Array.isArray(data.news) ? data.news : []);
@@ -117,12 +118,17 @@ function normalizeNews(data) {
   const withId = entries.filter((e) => e.id !== null).sort((x, y) => y.id - x.id || x.i - y.i);
   const noId = entries.filter((e) => e.id === null).reverse();
   return [...withId, ...noId]
-    .slice(0, NEWS_LIMIT)
-    .map(({ n }) => ({
-      date: clip(typeof n.date === 'string' || typeof n.date === 'number' ? n.date : '', 40),
-      title: clip(n.title, 120),
-      body: clip(typeof n.body === 'string' ? n.body : '', 260),
-    }));
+    .slice(0, NEWS_MAX)
+    .map(({ n }) => {
+      const raw = typeof n.body === 'string' ? n.body : '';
+      const full = raw.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+      return {
+        date: clip(typeof n.date === 'string' || typeof n.date === 'number' ? n.date : '', 40),
+        title: clip(n.title, 120),
+        body: clip(raw, 260),                                            // для карточки
+        full: full.length > 2000 ? full.slice(0, 1999).trimEnd() + '…' : full,   // для окна
+      };
+    });
 }
 
 /** Рендер только через textContent — HTML из NEWS.json никогда не выполняется. */
@@ -140,12 +146,15 @@ function renderNews(items) {
   return true;
 }
 
-async function initNews() {
+async function initNews(setNews) {
   const status = $('news-status');
   try {
     const items = normalizeNews(await fetchJson(NEWS_URL));
-    if (renderNews(items)) {
-      if (status) status.textContent = 'Последние записи из репозитория проекта.';
+    if (renderNews(items.slice(0, NEWS_LIMIT))) {
+      setNews(items);
+      if (status) status.textContent = items.length > NEWS_LIMIT
+        ? 'Последние записи из репозитория проекта. Откройте любую — и листайте до самых старых (всего ' + items.length + ').'
+        : 'Последние записи из репозитория проекта.';
     } else if (status) {
       status.textContent = 'Свежих записей пока нет — ниже последние известные новости.';
     }
@@ -519,11 +528,129 @@ function initServerModal() {
   return collect;
 }
 
+/* ───────────── Новости → окно с листанием ─────────────
+   Карточки в разделе — только NEWS_LIMIT последних; окно листает все записи до самой старой (без зацикливания).
+   Данные берутся из массива (а не из DOM, где карточек всего три); без сети — из запасных карточек HTML. */
+function initNewsModal() {
+  const dialog = $('news-modal'), list = $('news-list');
+  if (!dialog || !list || typeof dialog.showModal !== 'function') return () => {};
+
+  const view = $('nm-view'), prev = $('nm-prev'), next = $('nm-next');
+  let items = [], cards = [];
+  let index = 0, opener = null, animating = false, closing = false, touchX = 0, touchY = 0;
+
+  /** Запасные данные — из карточек, которые уже есть в HTML. */
+  function fromCards() {
+    return [...list.querySelectorAll('.news__item')].map((li) => {
+      const t = (sel) => { const el = li.querySelector(sel); return el ? el.textContent.trim() : ''; };
+      return { date: t('.news__date'), title: t('h3'), full: t('p:not(.news__date)') };
+    });
+  }
+
+  /** Вызывается при старте и когда NEWS.json заменил карточки: setItems(все записи) или setItems() — взять из карточек. */
+  function setItems(all) {
+    items = all && all.length ? all : fromCards();
+    cards = [...list.querySelectorAll('.news__item')];
+    cards.forEach((card) => {
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-haspopup', 'dialog');
+      const h = card.querySelector('h3');
+      card.setAttribute('aria-label', (h ? h.textContent.trim() : 'Новость') + ': читать полностью');
+    });
+    if (dialog.open && items.length) { opener = null; index = Math.min(index, items.length - 1); fill(); }
+  }
+
+  function fill() {
+    const n = items[index], active = document.activeElement;
+    $('nm-date').textContent = n.date || 'Новости';
+    $('nm-title').textContent = n.title;
+    $('nm-body').textContent = n.full;
+    $('nm-count').textContent = (index + 1) + ' / ' + items.length;
+    prev.disabled = index === 0;
+    next.disabled = index === items.length - 1;
+    // фокус не должен пропасть, если нажатая стрелка стала неактивной (дошли до края)
+    if (active === prev && prev.disabled) next.focus();
+    else if (active === next && next.disabled) prev.focus();
+    view.scrollTop = 0;
+  }
+
+  /** dir: 'next' — к более старой записи, 'prev' — к более новой. */
+  function go(target, dir) {
+    if (animating || target < 0 || target >= items.length || target === index) return;
+    animating = true;
+    view.dataset.anim = 'out-' + dir;
+    setTimeout(() => {
+      index = target;
+      fill();
+      view.dataset.anim = 'in-' + dir;
+      void view.offsetWidth;
+      delete view.dataset.anim;
+      animating = false;
+    }, SLIDE_MS);
+  }
+
+  function open(i, from) {
+    if (closing || dialog.open || !items[i]) return;
+    index = i; opener = from || null;
+    delete view.dataset.anim;
+    fill();
+    document.documentElement.classList.add('modal-open');
+    dialog.showModal();
+    requestAnimationFrame(() => dialog.classList.add('is-open'));
+  }
+
+  function close() {
+    if (!dialog.open || closing) return;
+    closing = true;
+    dialog.classList.remove('is-open');
+    setTimeout(() => { dialog.close(); }, MODAL_MS);
+  }
+
+  dialog.addEventListener('close', () => {
+    closing = false; animating = false;
+    dialog.classList.remove('is-open');
+    document.documentElement.classList.remove('modal-open');
+    if (opener && typeof opener.focus === 'function') opener.focus();
+  });
+  dialog.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) close(); });
+  $('nm-close').addEventListener('click', close);
+  prev.addEventListener('click', () => go(index - 1, 'prev'));
+  next.addEventListener('click', () => go(index + 1, 'next'));
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(index - 1, 'prev'); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); go(index + 1, 'next'); }
+  });
+  // Свайп: влево — более старая запись, вправо — более новая
+  dialog.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0]; touchX = t.clientX; touchY = t.clientY;
+  }, { passive: true });
+  dialog.addEventListener('touchend', (e) => {
+    const t = e.changedTouches[0], dx = t.clientX - touchX, dy = t.clientY - touchY;
+    if (Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy) * 1.2) go(index + (dx < 0 ? 1 : -1), dx < 0 ? 'next' : 'prev');
+  }, { passive: true });
+  window.addEventListener('pagehide', () => document.documentElement.classList.remove('modal-open'));
+
+  list.addEventListener('click', (e) => {
+    const card = e.target.closest('.news__item'), i = cards.indexOf(card);
+    if (i >= 0) open(i, card);
+  });
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const card = e.target.closest('.news__item'), i = cards.indexOf(card);
+    if (i >= 0 && e.target === card) { e.preventDefault(); open(i, card); }
+  });
+
+  setItems();
+  return setItems;
+}
+
 /* ───────────── Старт ───────────── */
 function init() {
   const year = $('year'); if (year) year.textContent = String(new Date().getFullYear());
   initRelease();
-  initNews();
+  initNews(initNewsModal());
   initScreenshots();
   setInterval(tickTimers, 1000);
   initServers(initServerModal());   // сначала модалка на запасных карточках из HTML, затем каталог подменяет их и обновляет модалку
