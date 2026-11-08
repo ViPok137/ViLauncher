@@ -5,19 +5,21 @@
 const VERSION = '0.5.0';   // ← Подставь актуальный тег релиза БЕЗ «v» (например '0.5.1').
                            //   Если AUTO_VERSION = true, версия и ссылка подтянутся из GitHub сами; константа — запасной вариант.
 const REPO_URL = 'https://github.com/ViPok137/ViLauncher';
-const DOWNLOAD_URL = REPO_URL + '/releases/latest';   // всегда рабочая ссылка на последний релиз (страница релиза)
 const SETUP_NAME = 'ViLauncher_{version}_x64-setup.exe'; // шаблон имени установщика Tauri/NSIS
-const USE_DIRECT_DOWNLOAD = false;  // true → кнопка ведёт сразу на .exe: …/releases/latest/download/<SETUP_NAME>
-                                    //   (работает, только если VERSION совпадает с версией последнего релиза)
 const NEWS_URL = 'https://raw.githubusercontent.com/ViPok137/ViLauncher/main/NEWS.json';
+const SERVERS_URL = 'https://raw.githubusercontent.com/ViPok137/ViLauncher/main/servers.json';   // каталог серверов (контракт v1)
 const API_LATEST_URL = 'https://api.github.com/repos/ViPok137/ViLauncher/releases/latest';
 const AUTO_VERSION = true;          // false → не обращаться к api.github.com, использовать только константы выше
 const NEWS_LIMIT = 3;               // сколько новостей показывать
+const SERVERS_LIMIT = 12;           // больше карточек не рисуем (защита от мусора в JSON)
+const ACCEPT_LEGACY_ACTIVE = true;  // переходный режим: если в записи нет status, но есть старое булево active → open/coming.
+                                    //   Когда в servers.json у всех записей появится status — поставь false.
 const FETCH_TIMEOUT_MS = 6000;      // ожидание ответа сети
 /* ══════════════════════════════════════════════════════════════════════════════════ */
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:[-+.][0-9A-Za-z.-]+)?$/;
 const ASSET_URL_PREFIX = REPO_URL + '/releases/download/';
+const RAW_PREFIX = 'https://raw.githubusercontent.com/ViPok137/ViLauncher/';   // единственный внешний источник иконок
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,7 +58,7 @@ async function fetchJson(url) {
 /* ───────────── Версия и ссылка скачивания ───────────── */
 async function initRelease() {
   // 1. Запасной вариант — константы: работает без сети и без JS-API.
-  applyRelease(VERSION, USE_DIRECT_DOWNLOAD ? directUrl(VERSION) : DOWNLOAD_URL);
+  applyRelease(VERSION, directUrl(VERSION));
   if (!AUTO_VERSION) return;
 
   // 2. Актуальный релиз у GitHub: точная версия и реальная ссылка на установщик.
@@ -64,10 +66,12 @@ async function initRelease() {
     const rel = await fetchJson(API_LATEST_URL);
     const version = String(rel.tag_name || '').replace(/^v/i, '');
     if (!VERSION_RE.test(version)) return;
-    const asset = (Array.isArray(rel.assets) ? rel.assets : []).find((a) =>
-      a && typeof a.browser_download_url === 'string' &&
-      a.browser_download_url.startsWith(ASSET_URL_PREFIX) && /-setup\.exe$/i.test(a.browser_download_url));
-    applyRelease(version, asset ? asset.browser_download_url : DOWNLOAD_URL);
+    const exes = (Array.isArray(rel.assets) ? rel.assets : []).filter((a) =>
+      a && typeof a.browser_download_url === 'string' && a.browser_download_url.startsWith(ASSET_URL_PREFIX) &&
+      /setup[^/]*\.exe$/i.test(a.browser_download_url));
+    // Предпочитаем Tauri-имя *-setup.exe, затем любой *setup*.exe; иначе — прямая ссылка по шаблону SETUP_NAME
+    const asset = exes.find((a) => /-setup\.exe$/i.test(a.browser_download_url)) || exes[0];
+    applyRelease(version, asset ? asset.browser_download_url : directUrl(version));
   } catch (e) {
     /* нет сети / лимит GitHub API — остаются константы */
   }
@@ -158,6 +162,132 @@ function initScreenshots() {
   }
 }
 
+/* ───────────── Каталог серверов (servers.json, контракт v1) ─────────────
+   Источник истины о том, можно ли зайти, — поле status из JSON. Сайт ничего не пингует и не хранит.
+   Всё выводится через textContent; адрес на странице не показывается (его подставляет лаунчер). */
+const STATUS = {
+  open:        { label: 'Доступен',        kind: 'ok'   },
+  maintenance: { label: 'На обслуживании', kind: 'warn' },
+  updating:    { label: 'Обновляется',     kind: 'busy' },
+  coming:      { label: 'Скоро',           kind: 'soon' },
+  offline:     { label: 'Выключен',        kind: 'off'  },
+};
+const LOADERS = { neoforge: 'NeoForge', forge: 'Forge', fabric: 'Fabric', quilt: 'Quilt' };
+const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/;
+let iconSeq = 0;
+
+/** Иконка по ссылке: только assets/… этого сайта или файлы из этого репозитория на raw.githubusercontent.com. */
+function safeIconUrl(u) {
+  if (typeof u !== 'string') return '';
+  const t = u.trim();
+  if (!t || t.length > 300) return '';
+  if (/^assets\/[\w./-]+\.(png|webp|jpe?g|gif|svg)$/i.test(t) && !t.includes('..')) return t;
+  try {
+    const x = new URL(t);
+    if (x.protocol === 'https:' && x.href.startsWith(RAW_PREFIX) && /\.(png|webp|jpe?g|gif)$/i.test(x.pathname)) return x.href;
+  } catch (e) { /* не ссылка */ }
+  return '';
+}
+
+/** Сначала показывается символ icon; картинка подменяет его, только когда реально загрузилась. */
+function paintIcon(el, glyph, url) {
+  const token = String(++iconSeq);
+  el.dataset.t = token;
+  el.textContent = glyph;
+  if (!url) return;
+  const img = new Image();
+  img.alt = ''; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+  img.onload = () => { if (el.dataset.t === token) el.replaceChildren(img); };
+  img.src = url;
+}
+
+function versionLine(s) {
+  const mc = typeof s.mcVersion === 'string' ? clip(s.mcVersion, 24) : '';
+  const parts = [!mc || /^latest$/i.test(mc) ? 'Всегда последняя версия' : 'Minecraft ' + mc];
+  const raw = typeof s.loader === 'string' ? s.loader.trim() : '';
+  if (s.type !== 'vanilla' && raw && !/^(none|vanilla)$/i.test(raw)) parts.push(LOADERS[raw.toLowerCase()] || clip(raw, 20));
+  return parts.join(' · ');
+}
+
+/** Принимает массив или { version, servers: [...] }; мусорные записи отбрасываются, порядок — по order (нет order → в конец, по порядку файла). */
+function normalizeServers(data) {
+  const list = Array.isArray(data) ? data : (data && Array.isArray(data.servers) ? data.servers : []);
+  const seen = new Set();
+  const out = [];
+  list.forEach((s, i) => {
+    if (!s || typeof s !== 'object' || typeof s.name !== 'string' || !s.name.trim()) return;
+    const id = typeof s.id === 'string' ? s.id.trim() : '';
+    if (!ID_RE.test(id) || seen.has(id)) return;
+    seen.add(id);
+
+    let status = typeof s.status === 'string' ? s.status.trim().toLowerCase() : '';
+    if (!status && ACCEPT_LEGACY_ACTIVE && typeof s.active === 'boolean') status = s.active ? 'open' : 'coming';
+    const known = Object.prototype.hasOwnProperty.call(STATUS, status);
+    const hasAddress = typeof s.address === 'string' && s.address.trim() !== '';
+    const joinable = status === 'open' && hasAddress;
+    // reason выбирает подпись и подсказку в окне; open без адреса — не «доступен», а «адрес не указан»
+    const reason = !known ? 'unknown' : (status === 'open' && !hasAddress ? 'noaddress' : status);
+    const glyph = Array.from(typeof s.icon === 'string' ? s.icon.trim() : '').slice(0, 8).join('') || Array.from(s.name.trim())[0].toUpperCase();
+
+    out.push({
+      i, id, reason, joinable,
+      order: typeof s.order === 'number' && Number.isFinite(s.order) ? s.order : Infinity,
+      name: clip(s.name, 60),
+      version: versionLine(s),
+      description: clip(typeof s.description === 'string' ? s.description : '', 200),
+      message: clip(typeof s.statusMessage === 'string' ? s.statusMessage : '', 160),   // необязательное поле на будущее
+      glyph, iconUrl: safeIconUrl(s.iconUrl),
+      subscription: s.subscription === true,
+    });
+  });
+  return out.sort((a, b) => (a.order === b.order ? a.i - b.i : a.order - b.order)).slice(0, SERVERS_LIMIT);
+}
+
+function badgeFor(reason) {
+  if (reason === 'noaddress') return { text: 'Адрес не указан', kind: 'soon' };
+  if (reason === 'unknown') return { text: 'Статус неизвестен', kind: 'off' };
+  return { text: STATUS[reason].label, kind: STATUS[reason].kind };
+}
+
+function buildServerCard(s) {
+  const li = document.createElement('li');
+  li.className = 'srv ' + (s.joinable ? 'srv--on' : 'srv--off');
+  li.dataset.id = s.id; li.dataset.reason = s.reason; li.dataset.glyph = s.glyph;
+  if (s.iconUrl) li.dataset.iconUrl = s.iconUrl;
+
+  const top = document.createElement('div'); top.className = 'srv__top';
+  const ic = document.createElement('span'); ic.className = 'srv__ic'; ic.setAttribute('aria-hidden', 'true');
+  paintIcon(ic, s.glyph, s.iconUrl);
+  const h = document.createElement('h3'); h.textContent = s.name;
+  top.append(ic, h);
+
+  const ver = document.createElement('p'); ver.className = 'srv__ver'; ver.textContent = s.version;
+  li.append(top, ver);
+  if (s.description) { const p = document.createElement('p'); p.textContent = s.description; li.append(p); }
+  if (s.message) { const m = document.createElement('p'); m.className = 'srv__msg'; m.textContent = s.message; li.append(m); }
+
+  const badges = document.createElement('div'); badges.className = 'srv__badges';
+  const make = (b) => { const span = document.createElement('span'); span.className = 'badge badge--' + b.kind; span.textContent = b.text; return span; };
+  badges.append(make(badgeFor(s.reason)));
+  if (s.subscription) badges.append(make({ text: 'по подписке', kind: 'sub' }));
+  li.append(badges);
+  return li;
+}
+
+async function initServers(refreshModal) {
+  const ul = $('servers-list'), status = $('servers-status');
+  const note = (t) => { if (status) status.textContent = t; };
+  try {
+    const items = normalizeServers(await fetchJson(SERVERS_URL));
+    if (!ul || !items.length) { note('В каталоге пока нет серверов — показаны последние известные данные, статусы могут быть неактуальны.'); return; }
+    ul.replaceChildren(...items.map(buildServerCard));
+    refreshModal();
+    note('Статусы взяты из каталога проекта.');
+  } catch (e) {
+    note('Не удалось загрузить каталог — показаны последние известные данные, статусы могут быть неактуальны.');
+  }
+}
+
 /* ───────────── Карточки серверов → модальное окно ─────────────
    Содержимое окна читается из самих карточек .srv и выводится только через textContent. */
 const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -166,15 +296,27 @@ const SLIDE_MS = REDUCED_MOTION ? 0 : 180;   // смена сервера вну
 const SWIPE_MIN_PX = 48;                     // минимальный сдвиг пальца для листания
 const HINT_ON = 'Установи лаунчер, выбери этот сервер в списке и нажми «Играть». Адрес подставится сам.';
 const HINT_OFF = 'Сервер пока закрыт: карточка уже есть в лаунчере, а доступ откроется позже. Следи за новостями.';
+const HINTS = {
+  open: HINT_ON,
+  coming: HINT_OFF,
+  maintenance: 'Сервер на обслуживании: зайти сейчас нельзя. Загляни позже — статус на этой странице обновится.',
+  updating: 'Сервер обновляется: подключиться пока нельзя. Попробуй чуть позже.',
+  offline: 'Сервер выключен: подключиться нельзя.',
+  noaddress: 'Адрес сервера пока не опубликован, поэтому подключиться нельзя. Следи за новостями.',
+  unknown: 'Статус сервера неизвестен, поэтому подключиться не получится. Загляни позже.',
+};
 
 function readServerCard(card) {
   const text = (sel) => { const el = card.querySelector(sel); return el ? el.textContent.trim() : ''; };
   return {
-    icon: text('.srv__ic'),
+    icon: card.dataset.glyph || text('.srv__ic'),
     title: text('h3'),
     version: text('.srv__ver'),
-    description: text('p:not(.srv__ver)'),
+    description: text('p:not(.srv__ver):not(.srv__msg)'),
+    message: text('.srv__msg'),
+    iconUrl: card.dataset.iconUrl || '',
     active: card.classList.contains('srv--on'),
+    reason: card.dataset.reason || (card.classList.contains('srv--on') ? 'open' : 'coming'),
     badges: [...card.querySelectorAll('.badge')].map((b) => ({
       text: b.textContent.trim(),
       kind: ['ok', 'soon', 'sub'].find((k) => b.classList.contains('badge--' + k)) || 'soon',
@@ -183,30 +325,46 @@ function readServerCard(card) {
 }
 
 function initServerModal() {
-  const dialog = $('srv-modal');
-  const cards = [...document.querySelectorAll('#servers .srv')];
-  if (!dialog || typeof dialog.showModal !== 'function' || !cards.length) return; // без поддержки <dialog> карточки остаются обычными
+  const dialog = $('srv-modal'), list = $('servers-list');
+  if (!dialog || !list || typeof dialog.showModal !== 'function') return () => {}; // без поддержки <dialog> карточки остаются обычными
 
   const view = $('mdl-view'), dots = $('mdl-dots');
+  let cards = [], dotButtons = [];
   let index = 0, opener = null, animating = false, closing = false, touchX = 0, touchY = 0;
 
-  // Точки-индикаторы (кнопки)
-  const dotButtons = cards.map((card, i) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'mdl__dot';
-    b.setAttribute('aria-label', 'Сервер ' + (i + 1) + ' из ' + cards.length + ': ' + readServerCard(card).title);
-    b.addEventListener('click', () => go(i));
-    dots.append(b);
-    return b;
-  });
+  /** Читает текущие карточки: вызывается при старте и после того, как каталог заменил карточки. */
+  function collect() {
+    cards = [...list.querySelectorAll('.srv')];
+    dots.replaceChildren();
+    dotButtons = cards.map((card, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'mdl__dot';
+      b.setAttribute('aria-label', 'Сервер ' + (i + 1) + ' из ' + cards.length + ': ' + readServerCard(card).title);
+      b.addEventListener('click', () => go(i));
+      dots.append(b);
+      return b;
+    });
+    // Карточки становятся кнопками: клик и клавиши обрабатывает делегирование на списке (ниже)
+    cards.forEach((card) => {
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-haspopup', 'dialog');
+      card.setAttribute('aria-label', readServerCard(card).title + ': подробнее');
+    });
+    if (dialog.open && cards.length) {     // каталог пришёл, пока окно открыто: остаёмся на месте, но уже на новых данных
+      opener = null;
+      index = Math.min(index, cards.length - 1);
+      fill(index);
+    }
+  }
 
   function fill(i) {
     const d = readServerCard(cards[i]);
-    $('mdl-icon').textContent = d.icon;
+    paintIcon($('mdl-icon'), d.icon, d.iconUrl);
     $('mdl-ver').textContent = d.version;
     $('mdl-title').textContent = d.title;
     $('mdl-desc').textContent = d.description;
-    $('mdl-hint').textContent = d.active ? HINT_ON : HINT_OFF;
+    $('mdl-hint').textContent = [d.message, HINTS[d.reason] || (d.active ? HINT_ON : HINT_OFF)].filter(Boolean).join(' ');
     view.dataset.state = d.active ? 'on' : 'off';
     $('mdl-badges').replaceChildren(...d.badges.map((b) => {
       const span = document.createElement('span');
@@ -288,18 +446,19 @@ function initServerModal() {
   }, { passive: true });
   window.addEventListener('pagehide', () => document.documentElement.classList.remove('modal-open'));
 
-  // Карточки становятся кнопками: клик, Enter и Пробел
-  cards.forEach((card, i) => {
-    const title = readServerCard(card).title;
-    card.tabIndex = 0;
-    card.setAttribute('role', 'button');
-    card.setAttribute('aria-haspopup', 'dialog');
-    card.setAttribute('aria-label', title + ': подробнее');
-    card.addEventListener('click', () => open(i, card));
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); open(i, card); }
-    });
+  // Клик, Enter и Пробел на карточке — делегированием, чтобы работало и с карточками, которые заменил каталог
+  list.addEventListener('click', (e) => {
+    const card = e.target.closest('.srv'), i = cards.indexOf(card);
+    if (i >= 0) open(i, card);
   });
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const card = e.target.closest('.srv'), i = cards.indexOf(card);
+    if (i >= 0 && e.target === card) { e.preventDefault(); open(i, card); }
+  });
+
+  collect();
+  return collect;
 }
 
 /* ───────────── Старт ───────────── */
@@ -308,6 +467,6 @@ function init() {
   initRelease();
   initNews();
   initScreenshots();
-  initServerModal();
+  initServers(initServerModal());   // сначала модалка на запасных карточках из HTML, затем каталог подменяет их и обновляет модалку
 }
 init();

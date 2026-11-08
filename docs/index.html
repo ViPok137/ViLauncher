@@ -7,8 +7,8 @@
   <meta name="description" content="ViLauncher — быстрый Minecraft-лаунчер для серверов ViPok: Create, Колонизация, Заражение и ваниль. Умная загрузка модов, автообновление, настройки прямо в лаунчере. Windows 10/11.">
   <meta name="theme-color" content="#0a0e13">
   <meta name="color-scheme" content="dark">
-  <!-- Строгий CSP: только свои файлы; наружу сайт ходит лишь за новостями и версией релиза (GitHub). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+  <!-- Строгий CSP: только свои файлы; наружу сайт ходит лишь за новостями, каталогом серверов, иконками серверов и версией релиза (GitHub). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://raw.githubusercontent.com; connect-src https://api.github.com https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
   <link rel="canonical" href="https://vipok137.github.io/ViLauncher/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://vipok137.github.io/ViLauncher/">
@@ -57,7 +57,7 @@
           <p class="lead">Лаунчер для серверов ViPok: <strong>Create</strong>, а в перспективе — <strong>Колонизация</strong>, <strong>Заражение</strong> и закрытая ваниль.</p>
           <p class="hero__note">Достаточно ника: аккаунт Microsoft для игры не нужен.</p>
           <div class="cta">
-            <a class="btn btn--primary" id="dl-main" href="https://github.com/ViPok137/ViLauncher/releases/latest" rel="noopener">
+            <a class="btn btn--primary" id="dl-main" href="https://github.com/ViPok137/ViLauncher/releases/latest/download/ViLauncher_0.5.0_x64-setup.exe" rel="noopener">
               <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Скачать для Windows
               <small>Download</small>
@@ -107,13 +107,13 @@
 
         <div class="dl">
           <ol class="steps">
-            <li><b>Скачай установщик</b><span>Кнопка справа ведёт на последний релиз — файл <code id="setup-name">ViLauncher_0.5.0_x64-setup.exe</code>.</span></li>
+            <li><b>Скачай установщик</b><span>Кнопка справа скачивает установщик последнего релиза — файл <code id="setup-name">ViLauncher_0.5.0_x64-setup.exe</code>.</span></li>
             <li><b>Запусти и установи</b><span>Лаунчер ставится в профиль пользователя. Если в системе нет WebView2, он подтянется автоматически.</span></li>
             <li><b>Введи ник и нажми «Установить»</b><span>Лаунчер сам скачает нужную Java, Minecraft и моды выбранного сервера. Дальше — «Играть».</span></li>
           </ol>
 
           <aside class="dl__box" aria-label="Загрузка">
-            <a class="btn btn--primary btn--xl" id="dl-box" href="https://github.com/ViPok137/ViLauncher/releases/latest" rel="noopener">
+            <a class="btn btn--primary btn--xl" id="dl-box" href="https://github.com/ViPok137/ViLauncher/releases/latest/download/ViLauncher_0.5.0_x64-setup.exe" rel="noopener">
               <svg class="btn__ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Скачать для Windows
               <small>Download · <span id="dl-ver">v0.5.0</span></small>
@@ -192,32 +192,33 @@
     <section class="sec sec--alt" id="servers" aria-labelledby="sv-title">
       <div class="wrap">
         <h2 id="sv-title">Серверы <span class="hl">ViPok</span></h2>
-        <p class="sec__lead">Адрес сервера подставляет сам лаунчер — вводить IP вручную не нужно.</p>
-        <ul class="grid grid--4 servers">
+        <p class="sec__lead sec__lead--tight">Адрес сервера подставляет сам лаунчер — вводить IP вручную не нужно.</p>
+        <p class="sec__lead srv__status" id="servers-status" aria-live="polite">Статусы подгружаются из каталога проекта. Если связи нет — ниже последние известные данные.</p>
+        <!-- Запасные карточки (без JS и при сбое сети); main.js заменяет их карточками из servers.json -->
+        <ul class="grid grid--4 servers" id="servers-list">
           <li class="srv srv--on">
             <div class="srv__top"><span class="srv__ic" aria-hidden="true">⚙</span><h3>Create + Aeronautics</h3></div>
             <p class="srv__ver">Minecraft 1.21.1 · NeoForge</p>
             <p>Механизмы, поезда и воздухоплавание. Основной сервер проекта.</p>
-            <span class="badge badge--ok">Доступен</span>
+            <div class="srv__badges"><span class="badge badge--ok">Доступен</span></div>
           </li>
           <li class="srv srv--off">
             <div class="srv__top"><span class="srv__ic" aria-hidden="true">🏰</span><h3>Колонизация</h3></div>
             <p class="srv__ver">Minecraft 1.20.1</p>
             <p>MineColonies и средневековье: строй города и развивай поселение.</p>
-            <span class="badge badge--soon">Скоро</span>
+            <div class="srv__badges"><span class="badge badge--soon">Скоро</span></div>
           </li>
           <li class="srv srv--off">
             <div class="srv__top"><span class="srv__ic" aria-hidden="true">☣</span><h3>Заражение</h3></div>
             <p class="srv__ver">Minecraft 1.21.1 · NeoForge</p>
             <p>Скалк, плоть и древние растения. Выживание в мире, который меняется.</p>
-            <span class="badge badge--soon">Скоро</span>
+            <div class="srv__badges"><span class="badge badge--soon">Скоро</span></div>
           </li>
           <li class="srv srv--off">
             <div class="srv__top"><span class="srv__ic" aria-hidden="true">🌿</span><h3>Ваниль</h3></div>
             <p class="srv__ver">Всегда последняя версия</p>
             <p>Закрытая ваниль без модов. Доступ по подписке (проверяет сервер).</p>
-            <span class="badge badge--soon">Скоро</span>
-            <span class="badge badge--sub">по подписке</span>
+            <div class="srv__badges"><span class="badge badge--soon">Скоро</span> <span class="badge badge--sub">по подписке</span></div>
           </li>
         </ul>
       </div>
