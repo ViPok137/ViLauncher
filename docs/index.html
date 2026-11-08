@@ -68,34 +68,34 @@
             </a>
           </div>
           <ul class="meta" aria-label="Коротко о лаунчере">
-            <li><span class="chip chip--ver" id="ver-badge">v0.0.0</span></li>
+            <li><span class="chip chip--ver" id="ver-badge">v0.5.0</span></li>
             <li>Windows 10/11 · x64</li>
             <li>Бесплатно, без регистрации</li>
           </ul>
         </div>
 
-        <button type="button" class="hero__shot" id="hero-shot-open" aria-label="Увеличить скриншот лаунчера">
-		  <img
-			src="assets/launcher-shot.png"
-			width="1385"
-			height="676"
-			alt="Окно ViLauncher"
-			decoding="async"
-		  >
-		</button>
-
-		<dialog class="shot-dialog" id="shot-dialog" aria-label="Скриншот лаунчера">
-		  <form method="dialog" class="shot-dialog__bar">
-			<button type="submit" class="shot-dialog__x" aria-label="Закрыть">×</button>
-		  </form>
-		  <img
-			class="shot-dialog__img"
-			src="assets/launcher-shot.png"
-			width="1385"
-			height="676"
-			alt="Окно ViLauncher, увеличено"
-		  >
-		</dialog>
+        <!-- Макет окна лаунчера (чистый CSS, не скриншот) -->
+        <div class="mock" aria-hidden="true">
+          <div class="mock__bar"><i></i><i></i><i></i><span>ViLauncher</span></div>
+          <div class="mock__body">
+            <div class="mock__row">
+              <div class="mock__card mock__card--on">
+                <b>CREATE</b><span>1.21.1 · NeoForge</span>
+                <em class="mock__badge mock__badge--ok">установлен</em>
+              </div>
+              <div class="mock__card mock__card--off">
+                <b>КОЛОНИЗАЦИЯ</b><span>1.20.1</span>
+                <em class="mock__badge">скоро</em>
+              </div>
+              <div class="mock__card mock__card--off">
+                <b>ЗАРАЖЕНИЕ</b><span>1.21.1 · NeoForge</span>
+                <em class="mock__badge">скоро</em>
+              </div>
+            </div>
+            <div class="mock__prog"><div class="mock__fill"></div></div>
+            <div class="mock__play">ИГРАТЬ</div>
+          </div>
+        </div>
       </div>
     </section>
 

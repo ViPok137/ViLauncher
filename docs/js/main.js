@@ -2,7 +2,7 @@
 /* ViLauncher — сайт-витрина. Чистый JavaScript, без зависимостей, без аналитики и cookies. */
 
 /* ═══════════════════════════ НАСТРОЙКИ (меняются здесь) ═══════════════════════════ */
-const VERSION = '0.0.0';   // ← Подставь актуальный тег релиза БЕЗ «v» (например '0.5.1').
+const VERSION = '0.5.0';   // ← Подставь актуальный тег релиза БЕЗ «v» (например '0.5.1').
                            //   Если AUTO_VERSION = true, версия и ссылка подтянутся из GitHub сами; константа — запасной вариант.
 const REPO_URL = 'https://github.com/ViPok137/ViLauncher';
 const SETUP_NAME = 'ViLauncher_{version}_x64-setup.exe'; // шаблон имени установщика Tauri/NSIS
@@ -90,20 +90,6 @@ function newsId(n) {
   return null;
 }
 
-function initHeroShot() {
-  const btn = document.getElementById('hero-shot-open');
-  const dlg = document.getElementById('shot-dialog');
-  if (!btn || !dlg || typeof dlg.showModal !== 'function') return;
-
-  btn.addEventListener('click', () => dlg.showModal());
-
-  dlg.addEventListener('click', (e) => {
-    if (e.target === dlg) dlg.close(); // клик по фону/полю dialog
-  });
-}
-
-// в init():
-initHeroShot();
 /**
  * Принимает массив записей или объект { news: [...] }; всё, что не строка, отбрасывается.
  * Порядок «сначала новые»: записи с числовым id — по убыванию id; записи без id — в обратном порядке файла
