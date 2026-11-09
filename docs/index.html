@@ -289,6 +289,24 @@
     </div>
   </dialog>
 
+  <dialog class="mdl mdl--news" id="news-modal" aria-modal="true" aria-labelledby="nm-title">
+    <div class="mdl__panel">
+      <button class="mdl__x" type="button" id="nm-close" aria-label="Закрыть окно">×</button>
+      <div class="mdl__view" id="nm-view">
+        <div class="mdl__info">
+          <p class="mdl__ver" id="nm-date"></p>
+          <h2 id="nm-title"></h2>
+          <p class="mdl__desc" id="nm-body"></p>
+        </div>
+      </div>
+      <div class="mdl__nav">
+        <button class="mdl__btn" type="button" id="nm-prev" aria-label="Более новая запись">‹</button>
+        <p class="mdl__pos" id="nm-count" aria-live="polite"></p>
+        <button class="mdl__btn" type="button" id="nm-next" aria-label="Более старая запись">›</button>
+      </div>
+    </div>
+  </dialog>
+
   <script src="js/main.js"></script>
 </body>
 </html>
