@@ -1,0 +1,162 @@
+/* Сезонное оформление (грузится из js/season.js только в период из js/season-config.js) */
+:root { --season-gold: #ffd166; }
+
+/* Снег */
+.season-snow { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 40; }
+.season-flake {
+  position: absolute; top: -12px; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%;
+  background: #fff; opacity: var(--o); box-shadow: 0 0 5px rgba(255, 255, 255, .7);
+  animation: season-fall var(--d) linear var(--delay) infinite; will-change: transform;
+}
+@keyframes season-fall { to { transform: translate3d(var(--dx), 108vh, 0); } }
+
+/* Гирлянда под шапкой (шапка sticky, поэтому гирлянда остаётся на виду) */
+.season-garland { position: absolute; left: 0; right: 0; top: 100%; height: 34px; pointer-events: none; overflow: hidden; }
+.season-garland::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: #1f2a35; }
+.season-bulb {
+  position: absolute; left: var(--l); top: var(--y); width: 9px; height: 13px; margin-left: -4px;
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%; background: var(--c); box-shadow: 0 0 10px var(--c);
+  animation: season-twinkle 2.4s ease-in-out var(--dl) infinite alternate;
+}
+.season-bulb::before { content: ""; position: absolute; left: 4px; bottom: 100%; width: 1px; height: var(--y); background: #2a3743; }
+@keyframes season-twinkle { from { opacity: .45; } to { opacity: 1; } }
+
+/* Поздравление в hero */
+.season-greet {
+  display: inline-block; margin: 14px 0 0; padding: 7px 14px; border-radius: 999px;
+  background: rgba(255, 209, 102, .1); color: var(--season-gold); border: 1px solid rgba(255, 209, 102, .45);
+  font: 700 .88rem/1.3 var(--font);
+}
+
+/* ── Статичные украшения: без анимаций и физики, pointer-events: none, из потока вынесены (position: absolute) ── */
+body.season-icicles .top::after,
+body.season-caps :is(.srv, .news__item)::before { content: ""; position: absolute; pointer-events: none; }
+
+/* Сосульки под шапкой: три слоя разной длины и шага, чтобы выглядело неровно */
+body.season-icicles .top::after {
+  left: 0; right: 0; top: calc(100% + 1px); height: 16px; z-index: -1;   /* под лампочками гирлянды */
+  background-repeat: repeat-x;
+  background-image:
+    conic-gradient(from -17deg at 50% 100%, transparent 0deg, rgba(214, 236, 255, .5) 1.5deg, rgba(214, 236, 255, .5) 32.5deg, transparent 34deg),
+    conic-gradient(from -22deg at 50% 100%, transparent 0deg, rgba(214, 236, 255, .42) 1.5deg, rgba(214, 236, 255, .42) 42.5deg, transparent 44deg),
+    conic-gradient(from -12deg at 50% 100%, transparent 0deg, rgba(214, 236, 255, .34) 1.5deg, rgba(214, 236, 255, .34) 22.5deg, transparent 24deg);
+  background-size: 17px 12px, 23px 8px, 31px 16px;
+  background-position: 0 0, 7px 0, 13px 0;
+  filter: drop-shadow(0 0 3px rgba(150, 205, 255, .35));
+}
+
+/* Снежный край + 5 сосулек сверху и «наплывы» снега по бокам (с маленькими сосульками) на кнопках скачивания, карточках серверов и новостей.
+   Один псевдоэлемент ::before из 16 слоёв (сверху вниз): 2 боковые сосульки · 5 сосулек сверху · 2 слоя бахромы · полоса снега · 4 бугра-сугроба · 2 боковых наплыва.
+   --u — масштаб (1 — карточка, .7 — кнопка), --x1…--x5 — положение сосулек сверху, --dl/--dr — длина левого и правого наплыва в px:
+   у соседних карточек они разные. */
+/* Базовое правило — списком селекторов, а не :is(): id внутри :is() поднял бы специфичность выше вариантов nth-child */
+body.season-caps .srv, body.season-caps .news__item {
+  position: relative;   /* опора для ::before; на раскладку не влияет */
+  --u: 1; --x1: 14%; --x2: 33%; --x3: 52%; --x4: 70%; --x5: 87%; --dl: 22; --dr: 16;
+}
+body.season-caps :is(.srv, .news__item):nth-child(3n+2) { --x1: 18%; --x2: 38%; --x3: 49%; --x4: 66%; --x5: 84%; --dl: 17; --dr: 24; }
+body.season-caps :is(.srv, .news__item):nth-child(3n) { --x1: 12%; --x2: 27%; --x3: 58%; --x4: 76%; --x5: 90%; --dl: 25; --dr: 13; }
+
+body.season-caps :is(.srv, .news__item)::before {
+  left: -5px; right: -5px; top: -10px; height: 40px;   /* выступает на 5px за края; верхний край элемента приходится на y = 10px */
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat-x, repeat-x, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-image:
+    conic-gradient(from -17.4deg at 50% 100%, transparent 0deg, #e4f2ff 1.2deg, #e4f2ff 33.6deg, transparent 34.8deg),
+    conic-gradient(from -17.4deg at 50% 100%, transparent 0deg, #eaf6ff 1.2deg, #eaf6ff 33.6deg, transparent 34.8deg),
+    conic-gradient(from -15.9deg at 50% 100%, transparent 0deg, #eaf6ff 1.2deg, #eaf6ff 30.6deg, transparent 31.8deg),
+    conic-gradient(from -18.4deg at 50% 100%, transparent 0deg, #d6eaff 1.2deg, #d6eaff 35.6deg, transparent 36.8deg),
+    conic-gradient(from -15.7deg at 50% 100%, transparent 0deg, #f2f9ff 1.2deg, #f2f9ff 30.2deg, transparent 31.4deg),
+    conic-gradient(from -15.3deg at 50% 100%, transparent 0deg, #dcedff 1.2deg, #dcedff 29.4deg, transparent 30.6deg),
+    conic-gradient(from -23.6deg at 50% 100%, transparent 0deg, #e4f2ff 1.2deg, #e4f2ff 46.0deg, transparent 47.2deg),
+    radial-gradient(circle at 50% 3px, #f2f8ff 3.6px, transparent 4.2px),
+    radial-gradient(circle at 50% 3px, #e2eefb 2.6px, transparent 3.2px),
+    linear-gradient(#f4f9ff, #e8f2fc),
+    radial-gradient(ellipse 14px 7px at 50% 100%, #f7fbff 96%, transparent 100%),
+    radial-gradient(ellipse 9px 5px at 50% 100%, #eef6ff 96%, transparent 100%),
+    radial-gradient(ellipse 17px 8px at 50% 100%, #f7fbff 96%, transparent 100%),
+    radial-gradient(ellipse 7px 4px at 50% 100%, #e8f2fd 96%, transparent 100%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, #f4f9ff 94%, transparent 100%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, #eef6ff 94%, transparent 100%);
+  background-size:
+    calc(5px * var(--u)) calc(8px * var(--u)), calc(5px * var(--u)) calc(8px * var(--u)),
+    calc(8px * var(--u)) calc(14px * var(--u)), calc(6px * var(--u)) calc(9px * var(--u)), calc(9px * var(--u)) calc(16px * var(--u)),
+    calc(6px * var(--u)) calc(11px * var(--u)), calc(7px * var(--u)) calc(8px * var(--u)),
+    13px 6px, 19px 6px, 100% 6px, 28px 7px, 18px 5px, 34px 8px, 14px 4px,
+    calc(10px * var(--u)) calc(var(--dl) * 1px * var(--u)), calc(10px * var(--u)) calc(var(--dr) * 1px * var(--u));
+  background-position:
+    calc((5 - 2.5 * var(--u)) * 1px) calc(var(--dl) * 1px * var(--u)),
+    calc(100% - (5 - 2.5 * var(--u)) * 1px) calc(var(--dr) * 1px * var(--u)),
+    var(--x1) 12px, var(--x2) 12px, var(--x3) 12px, var(--x4) 12px, var(--x5) 12px,
+    0 10px, 7px 10px, 0 7px, 8% 1px, 31% 3px, 58% 0, 82% 4px,
+    calc((5 - 5 * var(--u)) * 1px) 2px, calc(100% - (5 - 5 * var(--u)) * 1px) 2px;
+  filter: drop-shadow(0 1px 1px rgba(120, 170, 230, .45));
+}
+
+/* Телефон: легче — тонкий снег, 3 сосульки сверху поменьше, без боковых сосулек, наплывы короче; сосульки под шапкой короче и реже */
+@media (max-width: 560px) {
+  body.season-icicles .top::after {
+    height: 10px;
+    background-image:
+      conic-gradient(from -22deg at 50% 100%, transparent 0deg, rgba(214, 236, 255, .42) 1.5deg, rgba(214, 236, 255, .42) 42.5deg, transparent 44deg),
+      conic-gradient(from -17deg at 50% 100%, transparent 0deg, rgba(214, 236, 255, .34) 1.5deg, rgba(214, 236, 255, .34) 32.5deg, transparent 34deg);
+    background-size: 29px 9px, 47px 10px;
+    background-position: 0 0, 14px 0;
+  }
+  body.season-caps .srv, body.season-caps .news__item { --u: .6; }
+  body.season-caps :is(.srv, .news__item)::before {
+    background-size:
+      0 0, 0 0,
+      calc(8px * var(--u)) calc(14px * var(--u)), calc(6px * var(--u)) calc(9px * var(--u)), calc(9px * var(--u)) calc(16px * var(--u)),
+      0 0, 0 0,
+      13px 6px, 19px 6px, 100% 4px, 28px 7px, 18px 5px, 0 0, 0 0,
+      calc(10px * var(--u)) calc(var(--dl) * 1px * var(--u)), calc(10px * var(--u)) calc(var(--dr) * 1px * var(--u));
+    background-position:
+      0 0, 0 0,
+      var(--x1) 11px, var(--x2) 11px, var(--x3) 11px, 0 0, 0 0,
+      0 8px, 7px 8px, 0 8px, 10% 2px, 48% 3px, 0 0, 0 0,
+      calc((5 - 5 * var(--u)) * 1px) 3px, calc(100% - (5 - 5 * var(--u)) * 1px) 3px;
+  }
+}
+
+/* ══ Кнопки «Скачать для Windows» (#dl-main в hero и #dl-box в блоке скачивания) ══
+   Снег и сосульки нарисованы SVG-картинками (data: — разрешено CSP через img-src), без новой разметки.
+   ::before — снег: неровная пушистая полоса сверху с бликами и тенью снизу + каплевидные наплывы по краям;
+   ::after — 4 сосульки разной длины и формы (с бликом).
+   Оба слоя лежат НАД фоном кнопки, но ПОД её надписью (isolation + z-index: -1), не ловят клики (pointer-events: none)
+   и вынесены из потока (position: absolute), поэтому раскладка не меняется. Длинные сосульки — по бокам (там поле кнопки без текста),
+   у середины — короткие, чтобы не заходить на надпись. --k — масштаб сосулек (на телефоне меньше). */
+body.season-caps :is(#dl-main, #dl-box) { position: relative; isolation: isolate; overflow: visible; --k: 1; }
+body.season-caps :is(#dl-main, #dl-box)::before,
+body.season-caps :is(#dl-main, #dl-box)::after { content: ""; position: absolute; z-index: -1; pointer-events: none; left: -7px; right: -7px; top: -13px; background-repeat: no-repeat; }
+
+body.season-caps :is(#dl-main, #dl-box)::before {
+  height: 32px;   /* верхний край кнопки приходится на y = 13px: снег на 3–11px выше него и на 5–10px заходит внутрь */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 56' width='44' height='56'%3E%3Cdefs%3E%3ClinearGradient id='g' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='42'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.5' stop-color='%23eaf3ff'/%3E%3Cstop offset='1' stop-color='%23bcd5f2'/%3E%3C/linearGradient%3E%3Cfilter id='b' filterUnits='userSpaceOnUse' x='-4' y='0' width='52' height='56'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3C/defs%3E%3Cg %3E%3Cg filter='url(%23b)' fill='%232f5f99' opacity='.45' transform='translate(1 2.2)'%3E%3Crect x='0' y='10' width='44' height='8'/%3E%3Cellipse cx='16' cy='11' rx='14' ry='8.5'/%3E%3Cellipse cx='8' cy='12' rx='8' ry='7'/%3E%3Cellipse cx='32' cy='11' rx='9' ry='5'/%3E%3Cpath d='M.5,12 H12.5 C12.5,27.0 11.2,37.8 6.5,42 C1.8,37.8 .5,27.0 .5,12 Z'/%3E%3Cellipse cx='4.4' cy='28.5' rx='3.6' ry='5.4'/%3E%3Ccircle cx='20' cy='18' r='4.5'/%3E%3Ccircle cx='30' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='url(%23g)'%3E%3Crect x='0' y='10' width='44' height='8'/%3E%3Cellipse cx='16' cy='11' rx='14' ry='8.5'/%3E%3Cellipse cx='8' cy='12' rx='8' ry='7'/%3E%3Cellipse cx='32' cy='11' rx='9' ry='5'/%3E%3Cpath d='M.5,12 H12.5 C12.5,27.0 11.2,37.8 6.5,42 C1.8,37.8 .5,27.0 .5,12 Z'/%3E%3Cellipse cx='4.4' cy='28.5' rx='3.6' ry='5.4'/%3E%3Ccircle cx='20' cy='18' r='4.5'/%3E%3Ccircle cx='30' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.85'%3E%3Cellipse cx='13' cy='6.6' rx='5' ry='1.8'/%3E%3Cellipse cx='4' cy='25' rx='1.2' ry='7'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 56' width='44' height='56'%3E%3Cdefs%3E%3ClinearGradient id='g' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='34'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.5' stop-color='%23eaf3ff'/%3E%3Cstop offset='1' stop-color='%23bcd5f2'/%3E%3C/linearGradient%3E%3Cfilter id='b' filterUnits='userSpaceOnUse' x='-4' y='0' width='52' height='56'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3C/defs%3E%3Cg transform='translate(44 0) scale(-1 1)'%3E%3Cg filter='url(%23b)' fill='%232f5f99' opacity='.45' transform='translate(1 2.2)'%3E%3Crect x='0' y='10' width='44' height='8'/%3E%3Cellipse cx='16' cy='11' rx='14' ry='8.5'/%3E%3Cellipse cx='8' cy='12' rx='8' ry='7'/%3E%3Cellipse cx='32' cy='11' rx='9' ry='5'/%3E%3Cpath d='M.5,12 H12.5 C12.5,23.0 11.2,30.9 6.5,34 C1.8,30.9 .5,23.0 .5,12 Z'/%3E%3Cellipse cx='4.4' cy='24.1' rx='3.6' ry='4.0'/%3E%3Ccircle cx='20' cy='18' r='4.5'/%3E%3Ccircle cx='30' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='url(%23g)'%3E%3Crect x='0' y='10' width='44' height='8'/%3E%3Cellipse cx='16' cy='11' rx='14' ry='8.5'/%3E%3Cellipse cx='8' cy='12' rx='8' ry='7'/%3E%3Cellipse cx='32' cy='11' rx='9' ry='5'/%3E%3Cpath d='M.5,12 H12.5 C12.5,23.0 11.2,30.9 6.5,34 C1.8,30.9 .5,23.0 .5,12 Z'/%3E%3Cellipse cx='4.4' cy='24.1' rx='3.6' ry='4.0'/%3E%3Ccircle cx='20' cy='18' r='4.5'/%3E%3Ccircle cx='30' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.85'%3E%3Cellipse cx='13' cy='6.6' rx='5' ry='1.8'/%3E%3Cellipse cx='4' cy='21' rx='1.2' ry='5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 32' width='220' height='32'%3E%3Cdefs%3E%3ClinearGradient id='g' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='26'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.5' stop-color='%23eaf3ff'/%3E%3Cstop offset='1' stop-color='%23bcd5f2'/%3E%3C/linearGradient%3E%3Cfilter id='b' filterUnits='userSpaceOnUse' x='0' y='0' width='220' height='32'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3C/defs%3E%3Cg filter='url(%23b)' fill='%232f5f99' opacity='.45' transform='translate(0 2.2)'%3E%3Crect x='0' y='10' width='220' height='8'/%3E%3Ccircle cx='10' cy='18' r='5'/%3E%3Ccircle cx='28' cy='17.5' r='4'/%3E%3Ccircle cx='40' cy='18.5' r='5.5'/%3E%3Ccircle cx='66' cy='18' r='4.5'/%3E%3Ccircle cx='80' cy='17.5' r='3.5'/%3E%3Ccircle cx='104' cy='18.5' r='5.5'/%3E%3Ccircle cx='120' cy='18' r='4'/%3E%3Ccircle cx='142' cy='18.5' r='5'/%3E%3Ccircle cx='152' cy='17.5' r='3.5'/%3E%3Ccircle cx='174' cy='18.5' r='5'/%3E%3Ccircle cx='200' cy='18' r='4.5'/%3E%3Ccircle cx='212' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='url(%23g)'%3E%3Crect x='0' y='10' width='220' height='8'/%3E%3Cellipse cx='22' cy='11' rx='18' ry='8'/%3E%3Cellipse cx='58' cy='11' rx='11' ry='5'/%3E%3Cellipse cx='92' cy='11' rx='20' ry='9.5'/%3E%3Cellipse cx='131' cy='11' rx='13' ry='6'/%3E%3Cellipse cx='160' cy='11' rx='9' ry='4'/%3E%3Cellipse cx='190' cy='11' rx='16' ry='8'/%3E%3Ccircle cx='10' cy='18' r='5'/%3E%3Ccircle cx='28' cy='17.5' r='4'/%3E%3Ccircle cx='40' cy='18.5' r='5.5'/%3E%3Ccircle cx='66' cy='18' r='4.5'/%3E%3Ccircle cx='80' cy='17.5' r='3.5'/%3E%3Ccircle cx='104' cy='18.5' r='5.5'/%3E%3Ccircle cx='120' cy='18' r='4'/%3E%3Ccircle cx='142' cy='18.5' r='5'/%3E%3Ccircle cx='152' cy='17.5' r='3.5'/%3E%3Ccircle cx='174' cy='18.5' r='5'/%3E%3Ccircle cx='200' cy='18' r='4.5'/%3E%3Ccircle cx='212' cy='17.5' r='3.5'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.85'%3E%3Cellipse cx='19' cy='6.6' rx='6.8' ry='1.8'/%3E%3Cellipse cx='55' cy='8.2' rx='4.2' ry='1.1'/%3E%3Cellipse cx='89' cy='5.8' rx='7.6' ry='2.1'/%3E%3Cellipse cx='128' cy='7.7' rx='4.9' ry='1.3'/%3E%3Cellipse cx='157' cy='8.8' rx='3.4' ry='0.9'/%3E%3Cellipse cx='187' cy='6.6' rx='6.1' ry='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat, round no-repeat;   /* round: плитка слегка масштабируется, чтобы уложиться целое число раз — без обрезанных бугров на конце */
+  background-size: 44px 56px, 44px 56px, 220px 32px;
+  background-position: 0 0, 100% 0, 0 0;
+}
+
+body.season-caps :is(#dl-main, #dl-box)::after {
+  height: 50px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 22' width='9' height='22'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f6fbff'/%3E%3Cstop offset='.55' stop-color='%23cfe3fa'/%3E%3Cstop offset='1' stop-color='%2399c3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0,0 L9,0 C8.28,6.60 5.34,15.84 3.50,22 C2.46,15.84 0.72,6.60 0,0 Z' fill='url(%23i)' stroke='%237fb0e6' stroke-opacity='.5' stroke-width='.6'/%3E%3Cpath d='M2.70,1 C2.52,7.70 2.94,13.64 3.46,18.48' fill='none' stroke='%23fff' stroke-opacity='.85' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 11' width='7' height='11'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f6fbff'/%3E%3Cstop offset='.55' stop-color='%23cfe3fa'/%3E%3Cstop offset='1' stop-color='%2399c3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0,0 L7,0 C6.44,3.30 5.22,7.92 4.50,11 C2.98,7.92 0.56,3.30 0,0 Z' fill='url(%23i)' stroke='%237fb0e6' stroke-opacity='.5' stroke-width='.6'/%3E%3Cpath d='M2.10,1 C1.96,3.85 2.82,6.82 3.58,9.24' fill='none' stroke='%23fff' stroke-opacity='.85' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 14' width='8' height='14'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f6fbff'/%3E%3Cstop offset='.55' stop-color='%23cfe3fa'/%3E%3Cstop offset='1' stop-color='%2399c3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0,0 L8,0 C7.36,4.20 4.38,10.08 2.50,14 C1.82,10.08 0.64,4.20 0,0 Z' fill='url(%23i)' stroke='%237fb0e6' stroke-opacity='.5' stroke-width='.6'/%3E%3Cpath d='M2.40,1 C2.24,4.90 2.43,8.68 2.77,11.76' fill='none' stroke='%23fff' stroke-opacity='.85' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 24' width='9' height='24'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f6fbff'/%3E%3Cstop offset='.55' stop-color='%23cfe3fa'/%3E%3Cstop offset='1' stop-color='%2399c3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0,0 L9,0 C8.28,7.20 6.66,17.28 5.70,24 C3.78,17.28 0.72,7.20 0,0 Z' fill='url(%23i)' stroke='%237fb0e6' stroke-opacity='.5' stroke-width='.6'/%3E%3Cpath d='M2.70,1 C2.52,8.40 3.60,14.88 4.56,20.16' fill='none' stroke='%23fff' stroke-opacity='.85' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size:
+    calc(9px * var(--k)) calc(22px * var(--k)), calc(7px * var(--k)) calc(11px * var(--k)),
+    calc(8px * var(--k)) calc(14px * var(--k)), calc(9px * var(--k)) calc(24px * var(--k));
+  background-position: left 20px top 17px, 34% 17px, 63% 17px, right 20px top 17px;   /* левая и правая — длинные, у краёв */
+}
+@media (max-width: 560px) {
+  body.season-caps :is(#dl-main, #dl-box) { --k: .78; }
+}
+
+/* Высокая контрастность (forced colors): декор прячем, чтобы не мешал */
+@media (forced-colors: active) {
+  body.season-icicles .top::after, body.season-caps :is(.srv, .news__item)::before,
+  body.season-caps :is(#dl-main, #dl-box)::before, body.season-caps :is(#dl-main, #dl-box)::after { display: none; }
+}
+
+/* prefers-reduced-motion: у снежного края и сосулек анимаций нет вообще, а лампочки гирлянды в этом режиме горят ровно;
+   падающий снег в режиме «уменьшить движение» не создаётся (см. js/season.js). */
+@media (prefers-reduced-motion: reduce) {
+  .season-bulb { animation: none; opacity: .9; }
+}
